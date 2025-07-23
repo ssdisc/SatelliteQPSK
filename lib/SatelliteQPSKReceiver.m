@@ -11,6 +11,7 @@ bitsLength = config.bitsLength;
 IBytesFilename = config.IBytesFilename;
 QBytesFilename = config.QBytesFilename;
 IQBytesFilename = config.IQBytesFilename;
+rollOff = config.rollOff;
 
 %% 局部参数
 % 锁相环参数定义
@@ -34,7 +35,7 @@ s_qpsk = SignalLoader(filename,startBits,bitsLength);
 s_qpsk = resample(s_qpsk,resampleMolecule,resampleDenominator);
 
 %% 执行RRC滤波
-s_qpsk = RRCFilterFixedLen(fb/2,fs,s_qpsk,0.5,"RRC");
+s_qpsk = RRCFilterFixedLen(fb/2,fs,s_qpsk,rollOff,"RRC");
 
 %% 执行AGC
 s_qpsk = AGC_Normalize(s_qpsk,1,0.01);

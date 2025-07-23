@@ -7,6 +7,7 @@ config.resampleMolecule = 3;% 重采样分子
 config.resampleDenominator = 2;% 重采样分母
 config.fs = 75e6;% 重采样后的采样率
 config.fb = 75e6;% 数传速率75Mbps
+config.rollOff = 1/3;% 滚降系数
 config.startBits = 200e6;% 文件读取数据的起始点
 config.bitsLength = 2e5;% 单次处理点
 config.IBytesFilename = "Ibytes.txt";% I路比特输出文件
