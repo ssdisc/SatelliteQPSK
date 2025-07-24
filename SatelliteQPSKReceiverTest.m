@@ -4,7 +4,7 @@ addpath('lib');
 clc;clear;
 
 %% 定义参数对象
-config.inputDataFilename = "XESA_Data_1200MHz_B50M_20250308_01.fc32";%611采集数据，约60G
+config.inputDataFilename = "XESA_Data_1200MHz_B50M_20250308_01.fc32";% 课题要求所用数据
 config.sourceSampleRate = 50e6;% 原始信号采样率
 config.resampleMolecule = 3;% 重采样分子
 config.resampleDenominator = 2;% 重采样分母
