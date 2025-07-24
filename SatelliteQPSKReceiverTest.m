@@ -1,3 +1,6 @@
+% 添加库路径
+addpath('lib');
+
 clc;clear;
 
 %% 定义参数对象
