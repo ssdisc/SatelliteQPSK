@@ -149,7 +149,7 @@ for m=1:length(I_bytes)
 end
 
 %% 数据验证，选取一帧打印出AOS
-% aosFrameHead = AOSFrameHeaderDecoder(I_array);
+aosFrameHead = AOSFrameHeaderDecoder(I_array);
 
 %% 写入到文件 (原始逻辑)
 WriteUint8ToFile(I_bytes,IBytesFilename);
@@ -204,4 +204,4 @@ scatterplot(s_qpsk_cfo_sync);
 title('载波同步星座图');
 
 % 打印AOS帧头
-% disp(aosFrameHead);
+disp(aosFrameHead);
