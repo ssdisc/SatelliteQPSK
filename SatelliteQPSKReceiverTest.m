@@ -16,6 +16,10 @@ config.bitsLength = 65536;% 单次处理点
 config.IBytesFilename = "Ibytes.txt";% I路比特输出文件
 config.QBytesFilename = "Qbytes.txt";% Q路比特输出文件
 config.IQBytesFilename = "IQbytes.txt";% IQ路交织输出文件
+config.keepRedundantData = true; % 新增：是否保留完整帧（同步字+冗余）
+config.FullFrameIBytesFilename = "Ibytes_full.txt"; % 新增：完整帧I路输出
+config.FullFrameQBytesFilename = "Qbytes_full.txt"; % 新增：完整帧Q路输出
+config.FullFrameIQBytesFilename = "IQbytes_full.txt"; % 新增：完整帧IQ交织输出
 
 %% 调用函数
 [I_bytes,Q_bytes] = SatelliteQPSKReceiver(config);

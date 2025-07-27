@@ -13,6 +13,16 @@ QBytesFilename = config.QBytesFilename;
 IQBytesFilename = config.IQBytesFilename;
 rollOff = config.rollOff;
 
+% 新增：检查并提取新配置参数
+if isfield(config, 'keepRedundantData')
+    keepRedundantData = config.keepRedundantData;
+    FullFrameIBytesFilename = config.FullFrameIBytesFilename;
+    FullFrameQBytesFilename = config.FullFrameQBytesFilename;
+    FullFrameIQBytesFilename = config.FullFrameIQBytesFilename;
+else
+    keepRedundantData = false;
+end
+
 %% 局部参数
 % 锁相环参数定义
 df = 1e6;
@@ -49,10 +59,43 @@ s_qpsk_cfo_sync = QPSKFrequencyCorrectPLL(s_qpsk_sto_sync,0,fs,ki,kp);
 %% 执行帧同步，输出同步后的序列数组
 sync_frame = FrameSync(s_qpsk_cfo_sync);
 
-%% 执行解扰
-[I_array,Q_array] = FrameScramblingModule(sync_frame);
+%% 根据配置选择解扰和处理方式
+if keepRedundantData
+    disp("执行完整帧解扰...");
+    % 调用新的完整帧解扰模块
+    [I_array_full, Q_array_full] = FullFrameDescramblingModule(sync_frame);
+    
+    % 提取到IQ字节 (完整帧)
+    [rows_full, ~] = size(I_array_full);
+    I_bytes_full = [];
+    Q_bytes_full = [];
+    for m = 1:rows_full
+        I_bytes_full = [I_bytes_full, BinarySourceToByteArray(I_array_full(m, :))];
+        Q_bytes_full = [Q_bytes_full, BinarySourceToByteArray(Q_array_full(m, :))];
+    end
+    
+    % 交织完整帧到文件
+    BytesStream_full = zeros(1, length(I_bytes_full) * 2, 'uint8');
+    for m = 1:length(I_bytes_full)
+       BytesStream_full(2*m-1) = I_bytes_full(m);
+       BytesStream_full(2*m) = Q_bytes_full(m);
+    end
+    
+    % 写入完整帧到新文件
+    WriteUint8ToFile(I_bytes_full, FullFrameIBytesFilename);
+    WriteUint8ToFile(Q_bytes_full, FullFrameQBytesFilename);
+    WriteUint8ToFile(BytesStream_full, FullFrameIQBytesFilename);
+    
+    % 为了保持函数原有输出的兼容性，我们仍然可以处理原始数据
+    disp("同时执行原始数据处理流程...");
+    [I_array,Q_array] = FrameScramblingModule(sync_frame);
+else
+    disp("执行原始解扰流程...");
+    %% 执行解扰
+    [I_array,Q_array] = FrameScramblingModule(sync_frame);
+end
 
-%% 提取到IQ字节
+%% 提取到IQ字节 (原始逻辑)
 [rows,columns] = size(I_array);
 I_bytes = [];
 Q_bytes = [];
@@ -61,18 +104,18 @@ for m=1:rows
     Q_bytes = [Q_bytes,BinarySourceToByteArray(Q_array(m,:))];
 end
 
-%% 交织到文件
+%% 交织到文件 (原始逻辑)
 BytesStream = zeros(1,length(I_bytes)*2,'uint8');
 
 for m=1:length(I_bytes)
-   BytesStream(2*m-1) = I_bytes(m); 
+   BytesStream(2*m-1) = I_bytes(m);
    BytesStream(2*m) = Q_bytes(m);
 end
 
 %% 数据验证，选取一帧打印出AOS
 % aosFrameHead = AOSFrameHeaderDecoder(I_array);
 
-%% 写入到文件
+%% 写入到文件 (原始逻辑)
 WriteUint8ToFile(I_bytes,IBytesFilename);
 WriteUint8ToFile(Q_bytes,QBytesFilename);
 WriteUint8ToFile(BytesStream,IQBytesFilename);
