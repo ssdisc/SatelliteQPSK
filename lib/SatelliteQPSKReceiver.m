@@ -23,6 +23,14 @@ else
     keepRedundantData = false;
 end
 
+% 新增：检查并提取未解扰十六进制文件名
+if isfield(config, 'UnscrambledHexFilename')
+    UnscrambledHexFilename = config.UnscrambledHexFilename;
+    writeUnscrambledHex = true;
+else
+    writeUnscrambledHex = false;
+end
+
 %% 局部参数
 % 锁相环参数定义
 df = 1e6;
@@ -58,6 +66,34 @@ s_qpsk_cfo_sync = QPSKFrequencyCorrectPLL(s_qpsk_sto_sync,0,fs,ki,kp);
 
 %% 执行帧同步，输出同步后的序列数组
 sync_frame = FrameSync(s_qpsk_cfo_sync);
+
+%% 新增：在解扰前保存为十六进制文件
+if writeUnscrambledHex && ~isempty(sync_frame)
+    disp("正在保存未解扰的十六进制数据...");
+    
+    % 提取I路和Q路比特
+    I_bits_unscrambled = real(sync_frame);
+    Q_bits_unscrambled = imag(sync_frame);
+
+    % 将比特转换为字节
+    [rows_unscrambled, ~] = size(I_bits_unscrambled);
+    I_bytes_unscrambled = [];
+    Q_bytes_unscrambled = [];
+    for m = 1:rows_unscrambled
+        I_bytes_unscrambled = [I_bytes_unscrambled, BinarySourceToByteArray(I_bits_unscrambled(m, :))];
+        Q_bytes_unscrambled = [Q_bytes_unscrambled, BinarySourceToByteArray(Q_bits_unscrambled(m, :))];
+    end
+    
+    % 交织字节流
+    BytesStream_unscrambled = zeros(1, length(I_bytes_unscrambled) * 2, 'uint8');
+    for m = 1:length(I_bytes_unscrambled)
+       BytesStream_unscrambled(2*m-1) = I_bytes_unscrambled(m);
+       BytesStream_unscrambled(2*m) = Q_bytes_unscrambled(m);
+    end
+    
+    % 写入十六进制文件
+    WriteHexToFile(BytesStream_unscrambled, UnscrambledHexFilename);
+end
 
 %% 根据配置选择解扰和处理方式
 if keepRedundantData
