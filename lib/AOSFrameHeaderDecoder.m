@@ -62,8 +62,8 @@ if satelliteIQDataId == "00"
 elseif satelliteIQDataId == "01"
     aosFrameHead.satelliteIQDataId = "I路";
 elseif satelliteIQDataId == "10"
-    aosFrameHead.satelliteIQDataId = "合路";
-else
+    aosFrameHead.satelliteIQDataId = "Q路";
+else % "11"
     aosFrameHead.satelliteIQDataId = "无效";
 end
     
