@@ -1,2 +1,29 @@
+# MATLAB/Simulink
+*.asv
+*.mex*
+*.mlapp
+*.slic
+*.slx.r20*
+*.slxc
+*.p
+*.fig
+*.mlappinstall
+*.mlpkginstall
+*.prj
+*.mat
+*.slx.original
+*.autosave
+*.bak
+
+# Simulation Output
 *.fc32
 *.bin
+*.log
+*.tmp
+Ibytes.txt
+Qbytes.txt
+Ibytes_full.txt
+Qbytes_full.txt
+IQbytes.txt
+IQbytes_full.txt
+unscrambled_hex.txt
