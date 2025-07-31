@@ -1,6 +1,6 @@
 # 卫星QPSK接收机MATLAB实现深度解析教程
 
-**版本: 2.0 (深度扩充版)**
+**版本: 2.0**
 
 ---
 
@@ -9,6 +9,8 @@
 ### 1.1 项目概述
 
 本项目旨在使用MATLAB从零开始构建一个功能完备的QPSK（四相相移键控）信号接收机。该接收机能够处理一个真实的、从文件中加载的卫星中频IQ（同相/正交）数据流，通过一系列精密的数字信号处理步骤——包括匹配滤波、定时恢复、载波恢复、帧同步和解扰——最终准确地恢复出原始传输的二进制数据。
+
+**真实世界应用背景：** 本教程所用到的技术和信号处理流程，与真实的遥感卫星（如SAR合成孔径雷达卫星）下行数据链路解调项目高度相似。掌握这些技能意味着您将有能力处理实际的星地通信数据。
 
 这不仅仅是一个代码复现练习，更是一次深入探索数字通信物理层核心技术的旅程。通过本教程，您将能够：
 
@@ -75,6 +77,14 @@ graph TD
 7.  **相位模糊恢复 & 帧同步:** 由于QPSK的相位对称性，PLL锁定后可能存在0, 90, 180, 270度的相位模糊。此模块通过穷举四种相位并与已知的`1ACFFC1D`同步字进行相关匹配，在确定正确相位的同时，定位数据帧的起始边界。
 8.  **解扰:** 根据CCSDS标准，使用`1+X^14+X^15`多项式，对已同步的帧数据进行解扰，恢复出经LDPC编码后的原始数据。
 9.  **数据输出:** 将恢复的比特流转换为字节，并写入文件。此时的数据包含AOS帧头、数据负载和LDPC校验位。
+
+> **旁注：基于Simulink的替代实现**
+> 除了纯MATLAB脚本，本接收机的核心同步链路（RRC, AGC, 定时同步, 载波同步）也可以在 **Simulink** 中通过图形化模块搭建。这种方法在工业界和学术研究中非常普遍，其优点是：
+> *   **可视化:** 整个信号流和处理过程一目了然。
+> *   **模块化:** 可以方便地替换、配置和测试不同的算法模块（例如，用Costas环替代PLL）。
+> *   **代码生成:** 可以从Simulink模型直接生成高效的C/C++或HDL代码，用于嵌入式系统部署。
+>
+> 一个典型的Simulink实现会使用 `Communications Toolbox` 中的 `RRC Filter`, `AGC`, `Symbol Synchronizer` 和 `Carrier Synchronizer` 等模块来构建接收链路。
 
 ---
 
@@ -279,6 +289,12 @@ end
     ```
     对比RRC滤波后的星座图，您会发现一个显著的变化：之前完全弥散的环状点云，现在开始向四个角落聚集，形成了四个模糊的“云团”。这证明定时恢复已经起作用，采样点已经基本对准。但由于载波频偏未校正，整个星座图可能仍在整体旋转。
 
+> **真实世界问题排查案例：当AGC干扰定时环路**
+> 在实际工程中，前级模块的异常会直接影响后续模块。一个经典的案例是 **AGC（自动增益控制）与Gardner环路的相互影响**。
+> *   **问题现象:** Gardner环路锁定不稳，定时误差输出呈现规律性的锯齿波，导致星座图在“收敛”和“发散”之间跳动。
+> *   **问题根源:** 如果AGC的环路参数（如调整步长、平均窗口）设置得过于激进，AGC本身可能会产生低频振荡。这个振荡会调制信号的包络，而Gardener算法恰恰对信号能量（包络）敏感。结果，Gardner环路错误地试图去“锁定”这个由AGC引入的虚假包络，而不是真实的符号定时，导致同步失败。
+> *   **解决方案:** 适当放宽AGC的参数，比如增大其平均窗口、减小调整步长，使其响应更平滑，消除振荡。这再次证明了在通信链路中，每个模块都不是孤立的。
+
 ---
 
 ### 4.3 模块详解: 载波同步 (PLL)
@@ -412,8 +428,10 @@ end
 
 ### 5.1 检查输出文件
 
-*   在您的项目根目录下，检查是否生成了 [`Ibytes.txt`](Ibytes.txt:1) 和 [`Qbytes.txt`](Qbytes.txt:1) 文件。
-*   打开这些文件，确认它们包含了非零的数据。这表明整个接收机流程已成功执行，并恢复出了有效数据。
+*   **检查输出文件:** 在您的项目根目录下，检查是否生成了 [`Ibytes.txt`](Ibytes.txt:1) 和 [`Qbytes.txt`](Qbytes.txt:1) 文件。
+*   **解析AOS帧头:** 这是最有力的验证方法。对恢复出的多个连续数据帧进行AOS帧头解析。
+    *   **检查固定字段:** 验证版本号、卫星ID等是否与预期一致。
+    *   **检查帧计数器:** 确认连续帧的`frame_count`字段是否严格递增。这是链路稳定、无丢帧的黄金标准。
 
 ### 5.2 分析调试图窗
 
@@ -424,6 +442,120 @@ end
 
 ### 5.3 (进阶) 误码率分析
 
+### 5.4 (进阶) 编写AOS帧头解析器进行验证
+
+最能证明接收机正确性的方法，是直接解析恢复出的AOS帧头，并验证其内部字段的有效性。以下是如何编写一个简单的MATLAB函数来完成此任务。
+
+1.  **创建解析函数:** 在您的 `lib` 文件夹下，创建一个新文件 `AOSFrameHeaderDecoder.m`。
+
+    #### **AOS帧头结构定义**
+
+    根据三份报告及代码实现，AOS帧头共6字节（48比特），其结构定义如下，可作为下面代码的参考：
+
+    | 比特位置 (从1开始) | 字段名称                | 比特长度 | 描述                                       |
+    | :------------------- | :---------------------- | :------- | :----------------------------------------- |
+    | 1-2                  | Version                 | 2        | 传输帧版本号 (固定为`01`b)                 |
+    | 3-10                 | Spacecraft ID           | 8        | 航天器标识符 (例如: 40)                    |
+    | 11-16                | Virtual Channel ID      | 6        | 虚拟信道标识符                             |
+    | 17-40                | Frame Count             | 24       | 虚拟信道帧计数器，用于标识帧的序列号       |
+    | 41                   | Replay Flag             | 1        | 回放标识 (1表示回放数据, 0表示实时数据)    |
+    | 42                   | VC Frame Count Usage Flag | 1        | 虚拟信道帧计数用法标识 (0表示单路下传)     |
+    | 43-44                | Spare                   | 2        | 备用位                                     |
+    | 45-48                | Frame Count Cycle       | 4        | 帧计数周期 (例如: I/Q路标识, 传输速率标识) |
+
+    ```matlab
+    % lib/AOSFrameHeaderDecoder.m
+
+    function headerInfo = AOSFrameHeaderDecoder(frameBytes)
+        % 该函数解析一个AOS帧的前6个字节（帧头）
+        % 输入: frameBytes - 一个至少包含6个字节的行向量 (uint8)
+        % 输出: headerInfo - 一个包含解析字段的结构体
+
+        if length(frameBytes) < 6
+            error('输入字节流长度不足6字节，无法解析AOS帧头。');
+        end
+
+        % 将字节转换为比特流 (MSB first)
+        bitStream = de2bi(frameBytes(1:6), 8, 'left-msb')';
+        bitStream = bitStream(:)';
+
+        % 根据上面的表格解析字段
+        headerInfo.Version = bi2de(bitStream(1:2), 'left-msb');
+        headerInfo.SpacecraftID = bi2de(bitStream(3:10), 'left-msb');
+        headerInfo.VirtualChannelID = bi2de(bitStream(11:16), 'left-msb');
+        headerInfo.FrameCount = bi2de(bitStream(17:40), 'left-msb');
+        headerInfo.ReplayFlag = bitStream(41);
+        headerInfo.VCFrameCountUsageFlag = bitStream(42);
+        headerInfo.Spare = bi2de(bitStream(43:44), 'left-msb');
+        headerInfo.FrameCountCycle = bi2de(bitStream(45:48), 'left-msb');
+        
+        % 打印结果
+        fprintf('--- AOS Frame Header Decoded ---\n');
+        fprintf('Version: %d\n', headerInfo.Version);
+        fprintf('Spacecraft ID: %d (0x%s)\n', headerInfo.SpacecraftID, dec2hex(headerInfo.SpacecraftID));
+        fprintf('Virtual Channel ID: %d\n', headerInfo.VirtualChannelID);
+        fprintf('Frame Count: %d\n', headerInfo.FrameCount);
+        fprintf('--------------------------------\n');
+    end
+    ```
+
+2.  **在主脚本中调用:** 修改您的主测试脚本 `SatelliteQPSKReceiverTest.m`，在最后添加调用代码。
+
+    ```matlab
+    % ... 在脚本的最后 ...
+
+    % 读取恢复的I路字节数据
+    fid = fopen('Ibytes.txt', 'r');
+    bytes = fread(fid, 'uint8');
+    fclose(fid);
+
+    % 假设每帧1024字节，解析前3帧
+    frameLength = 1024;
+    numFramesToParse = min(3, floor(length(bytes) / frameLength));
+
+    if numFramesToParse > 0
+        disp('--- Verifying recovered I-channel frames ---');
+        for i = 1:numFramesToParse
+            startIdx = (i-1) * frameLength + 1;
+            endIdx = startIdx + frameLength - 1;
+            currentFrame = bytes(startIdx:endIdx)'; % 提取并转为行向量
+            
+            % 调用解析器
+            AOSFrameHeaderDecoder(currentFrame);
+        end
+    else
+        disp('No complete frames found in Ibytes.txt to verify.');
+    end
+    ```
+
+3.  **运行与分析:**
+    *   重新运行主脚本。
+    *   在MATLAB命令窗口，您应该能看到类似下面的输出：
+
+    ```
+    --- Verifying recovered I-channel frames ---
+    --- AOS Frame Header Decoded ---
+    Version: 1
+    Spacecraft ID: 40 (0x28)
+    Virtual Channel ID: 0
+    Frame Count: 514313
+    --------------------------------
+    --- AOS Frame Header Decoded ---
+    Version: 1
+    Spacecraft ID: 40 (0x28)
+    Virtual Channel ID: 0
+    Frame Count: 514314
+    --------------------------------
+    --- AOS Frame Header Decoded ---
+    Version: 1
+    Spacecraft ID: 40 (0x28)
+    Virtual Channel ID: 0
+    Frame Count: 514315
+    --------------------------------
+    ```
+    *   **关键验证点:**
+        *   `Spacecraft ID` 是一个固定的值 (例如40)。
+        *   `Frame Count` 应该是 **连续递增** 的。这强有力地证明了您的接收机不仅正确解调了数据，而且没有丢失任何帧。
 如果您拥有原始的发送数据，或者能够根据某些已知的帧内容（如信标信息）构造出发射序列，您可以使用MATLAB的 `biterr` 函数来计算误码率(BER)。
 
 假设您构造了一个名为 `transmitted_bits` 的已知发送比特序列，对应于接收到的 `received_bits`：
@@ -459,3 +591,23 @@ fprintf('误码率 (BER): %e\n', bit_error_rate);
 *   **OFDM系统**：将单载波系统扩展到多载波系统，以对抗频率选择性衰落。
 
 希望本教程能成为您在数字通信学习道路上的一块坚实基石。
+---
+
+## 7. 参考文献 (References)
+
+本教程的构建和理论分析参考了以下关键资料：
+
+1.  **项目核心规范:**
+    *   [`卫星数传信号帧格式说明.pdf`](卫星数传信号帧格式说明.pdf): 本项目文件夹内包含的文档，详细定义了AOS帧结构、同步字、加扰多项式等关键参数。
+
+2.  **国际标准:**
+    *   **CCSDS (Consultative Committee for Space Data Systems):** 空间数据系统咨询委员会发布的一系列关于AOS (Advanced Orbiting Systems) 的建议标准（蓝皮书），是本通信协议的根本依据。
+
+3.  **经典理论教材:**
+    *   Proakis, John G. *Digital Communications*. McGraw-Hill, 2008. (或更新版本) - 数字通信领域的权威著作，详细阐述了QPSK、匹配滤波、同步等核心理论。
+
+4.  **项目实践报告 (Project Implementation Reports):**
+    *   [`14+2022210532+程梓睿+卫星下行接收报告.pdf`](14+2022210532+程梓睿+卫星下行接收报告.pdf)
+    *   [`2022211110-2022210391-汪曈熙-卫星下行接收报告.pdf`](2022211110-2022210391-汪曈熙-卫星下行接收报告.pdf)
+    *   [`2022211110-2022210394-汪宇翔-卫星下行接收报告.pdf`](2022211110-2022210394-汪宇翔-卫星下行接收报告.pdf)
+    *   (这些报告提供了宝贵的实践见解、代码实现和问题排查案例，极大地丰富了本教程的深度和实用性。)
