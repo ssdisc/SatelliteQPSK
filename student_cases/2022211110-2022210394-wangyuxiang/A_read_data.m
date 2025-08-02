@@ -1,5 +1,5 @@
 %% 初始化参数
-filename = '../../data/sample_0611_500MHz_middle.bin';  % 文件名
+filename = 'data/sample_0611_500MHz_middle.bin';  % 文件名
 N = 1e6;                    % 读取前 N 个采样点
 fs = 500e6;                   % 原始采样率
 Ts = 1/fs;                    % 原始采样时间间隔
