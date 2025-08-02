@@ -1,5 +1,5 @@
 % 设置文件路径和要读取的复数点个数
-filename = "I:\XESA_Data_1200MHz_B50M_20250308_01.fc32";
+filename = "../../data/sample_0611_500MHz_middle.bin";
 N = 50000; 
 
 % 打开文件

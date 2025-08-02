@@ -5,7 +5,7 @@ clc;clear;
 
 
 %% 定义参数对象
-config.inputDataFilename = "sample_0611_500MHz_middle.bin";%611采集数据，约60G
+config.inputDataFilename = "../../data/sample_0611_500MHz_middle.bin";%611采集数据，约60G
 config.sourceSampleRate = 500e6;% 原始信号采样率
 config.resampleMolecule = 3;% 重采样分子
 config.resampleDenominator = 10;% 重采样分母

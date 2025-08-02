@@ -4,7 +4,7 @@ clear;
 
 % --- 配置 ---
 % 数据文件名 (与主脚本 SatelliteQPSKReceiverTest.m 保持一致)
-filename = 'XESA_Data_1200MHz_B50M_20250308_01.fc32';
+filename = '../../data/sample_0611_500MHz_middle.bin';
 % 每个采样点的字节数 (fc32 = float32 I + float32 Q = 4 + 4 = 8 bytes)
 bytes_per_sample = 8;
 % 原始信号采样率 (Hz)，参考 SatelliteQPSKReceiverTest.m

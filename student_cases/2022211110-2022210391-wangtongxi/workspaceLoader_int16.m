@@ -1,5 +1,5 @@
 % 设置文件路径和要读取的复数点个数
-filename = "I:\sample_06111";
+filename = "../../data/sample_0611_500MHz_middle.bin";
 N = 1000000; 
 
 % 打开文件
