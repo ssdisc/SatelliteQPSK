@@ -77,7 +77,7 @@ To address the gap between theory and practice in communication system modeling 
 
 - **调制方式**：QPSK（四相相移键控）
 - **比特率**：150 Mbps，对应符号率75 MBaud/s
-- **采样率**：原始500 MHz，重采样后150 MHz  
+- **采样率**：原始500 MHz
 - **脉冲成形**：根升余弦（RRC）滤波，滚降系数α=0.33
 - **同步策略**：Gardner定时同步 + PLL载波同步
 - **帧结构**：AOS（先进轨道系统）标准，1024字节/帧
@@ -285,7 +285,7 @@ $$e_\phi[k] = \text{sign}(\text{Re}\{r[k]\}) \cdot \text{Im}\{r[k]\} - \text{sig
 - **实现路径**：
   - 路径一：模块化编程，纯函数封装（学生自主选择）
   - 路径二：MATLAB脚本 + Simulink图形化建模（学生自主选择）
-- **版本控制**：Git
+- **版本控制**：Git+Github
 
 #### 4.1.3 三种技术路径详细对比
 
@@ -485,27 +485,40 @@ $$e_\phi[k] = \text{sign}(\text{Re}\{r[k]\}) \cdot \text{Im}\{r[k]\} - \text{sig
 
 通过可视化工具观察到明显的星座图收敛过程：
 
-1. **RRC滤波后**：环形分布，旋转模糊
-2. **定时同步后**：四个云团初现，仍有旋转
-3. **载波同步后**：清晰的四点星座图
-4. **相位校正后**：标准QPSK星座图
+1. **定时同步后**：圆环形分布
+2. **载波同步后**：清晰的四点星座图
+3. **相位校正后**：标准QPSK星座图
+
+以程梓睿的纯MATLAB实现为例，图4.1显示了卫星滤波前QPSK调制信号的频谱特性，图4.2展示了定时同步前的环形星座分布，图4.3显示了载波同步后的清晰四点QPSK星座图。
+
+![卫星滤波前QPSK调制信号频谱](../student_cases/14+2022210532+chengzirui/img/2.jpg)
+<center>图4.1 卫星滤波前QPSK调制信号频谱</center>
+
+![定时同步星座图](../student_cases/14+2022210532+chengzirui/img/3.jpg)
+<center>图4.2 定时同步后的星座图（环形分布）</center>
+
+![载波同步星座图](../student_cases/14+2022210532+chengzirui/img/4.jpg)
+<center>图4.3 载波同步后的QPSK星座图</center>
 
 #### 4.3.3 AOS帧头解析结果
+
+程梓睿实现的帧同步模块能够准确检测到同步字位置，如图4.4所示，在数据流的不同位置成功检测到了同步字。
+
+![帧同步检测位置](../student_cases/14+2022210532+chengzirui/img/1.jpg)
+<center>图4.4 帧同步检测位置图</center>
 
 成功解析出连续的AOS帧头信息：
 
 ```
 --- AOS Frame Header Decoded ---
-Version: 1
-Spacecraft ID: 40 (0x28)
-Virtual Channel ID: 0
-Frame Count: 514313
---------------------------------
---- AOS Frame Header Decoded ---
-Version: 1
-Spacecraft ID: 40 (0x28) 
-Virtual Channel ID: 0
-Frame Count: 514314
+                   versionId: 1
+                satelliteType: "03组"
+    satelliteVirtualChannelId: "03组 有效数据"
+         satelliteVCDUCounter: 532605
+             satelliteReplyId: "回放"
+          satelliteDownloadId: "单路下传"
+            satelliteIQDataId: "I路"
+        satelliteDigitalSpeed: "150Mbps"
 --------------------------------
 ```
 
