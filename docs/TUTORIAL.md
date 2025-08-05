@@ -160,14 +160,12 @@ graph TD
 
 ## 5. 核心模块详解与复现 (深度分析)
 
-本章节是教程的核心。我们将以程梓睿同学的实现为主，逐一深入每个关键模块，剖析其背后的理论、参数选择、代码实现，并指导您如何通过调试观察其效果。
+本章节是教程的核心。以下将以程梓睿同学的实现为主，逐一深入每个关键模块，剖析其背后的理论、参数选择、代码实现，并指导您如何通过调试观察其效果。其他两位同学的实现可以参考该教程自行理解。
 
-### **预备步骤：开始调试**
+### **预备步骤：加载数据**
 
 1.  打开主脚本 [`SatelliteQPSKReceiverTest.m`](../student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m)。
 2.  熟悉 `config` 结构体中的各项参数，特别是 `startBits` 和 `bitsLength`，它们决定了从数据文件的哪个位置开始处理，以及处理多长的数据段。
-3.  在 [`lib/SatelliteQPSKReceiver.m`](../student_cases/14+2022210532+chengzirui/lib/SatelliteQPSKReceiver.m) 的 **第32行** (`s_qpsk = SignalLoader(...)`) 设置一个断点。
-4.  返回主脚本，按 `F5` 键开始调试。程序将执行到该断点处暂停。
 
 ---
 
@@ -175,7 +173,7 @@ graph TD
 
 **预期效果:** 信号通过RRC滤波器后，频谱被有效抑制在符号速率范围内，眼图张开，为后续的定时同步做好了准备。
 
-#### **理论深度**
+#### **理论指导**
 
 在数字通信系统中，为了限制信号带宽并消除码间串扰（ISI），发送端通常使用一个**脉冲成形滤波器**。最常用的就是**升余弦（Raised Cosine, RC）**或其平方根——**根升余弦（Root Raised Cosine, RRC）**滤波器。
 
@@ -183,15 +181,6 @@ graph TD
 
 为了在发射机和接收机之间优化信噪比，通常采用**匹配滤波器**方案：即发射机和接收机各使用一个RRC滤波器。两个级联的RRC滤波器等效于一个RC滤波器，既满足了无ISI准则，又实现了最佳的信噪比性能。
 
-RRC滤波器的冲激响应 `h(t)` 的数学表达式为：
-
-$$
-h(t) = \frac{4\alpha}{\pi\sqrt{T_s}} \frac{\cos((1+\alpha)\frac{\pi t}{T_s}) + \frac{\sin((1-\alpha)\frac{\pi t}{T_s})}{4\alpha t/T_s}}{1 - (4\alpha t/T_s)^2}
-$$
-
-其中：
-*   $T_s$ 是符号周期 ($1/f_{sym}$)。
-*   $\alpha$ 是**滚降系数 (Roll-off factor)**。
 
 #### **参数选择: 滚降系数 `alpha`**
 
@@ -201,6 +190,7 @@ $$
     *   **比特率 (Bit Rate, $f_{bit}$):** 每秒传输的比特数。本项目为 **150 Mbps**。
     *   **符号率 (Symbol Rate / Baud Rate, $f_{sym}$):** 每秒传输的符号数。由于QPSK每个符号承载2个比特，因此符号率为 $f_{sym} = f_{bit} / 2 = \textbf{75 MBaud/s}$。
     *   在代码和后续讨论中，`fb` 常常指代符号率。
+    
 
 *   **物理意义**: `alpha` 决定了信号占用的实际带宽。信号带宽 $BW = (1 + \alpha) \cdot f_{sym}$。
 *   **取值影响**:
@@ -231,23 +221,23 @@ end
 
 **复现与观察:**
 
-1.  在调试模式下，执行到 **第38行** (`s_qpsk = RRCFilterFixedLen(...)`)。
+1.  在调试模式下，执行到 **第56行** (`s_qpsk = RRCFilterFixedLen(...)`)。
 2.  **观察频谱:** 执行完此行后，在命令窗口绘制滤波后信号的功率谱。
     ```matlab
     figure;
-    pwelch(s_qpsk, [], [], [], config.fs_resampled, 'centered'); % 注意使用重采样后的fs
+    pwelch(s_qpsk, [], [], [], config.fs, 'centered'); % 注意使用重采样后的fs
     title('RRC滤波后的信号频谱');
     ```
-    您应该能看到信号的功率被集中在奈奎斯特带宽 `[-f_sym/2, f_sym/2]` (即 `[-18.75, 18.75]` MHz) 附近，总带宽约为 `(1+alpha)*f_sym`。频谱边缘有平滑的滚降。
+    您应该能看到信号的功率被集中在奈奎斯特带宽 `[-f_sym/2, f_sym/2]` (即 `[-37.5, 37.5]` MHz) 附近，总带宽约为 `(1+alpha)*f_sym`。频谱边缘有平滑的滚降。
 3.  **观察星座图:** 此时绘制星座图 `scatterplot(s_qpsk)`，由于未经任何同步，它看起来会是一个非常模糊的、旋转的环形。这是正常的。
 
 ---
 
 ### 5.2 模块详解: Gardner定时同步
 
-**预期效果:** 经过Gardner同步后，采样点被调整到每个符号的最佳位置。此时的星座图，点会从之前的弥散环状开始向四个目标位置收敛，形成四个模糊的“云团”，但整个星座图可能仍在旋转。
+**预期效果:** 经过Gardner同步后，采样点被调整到每个符号的最佳位置。此时的星座图，点会从之前的弥散环状开始向四个目标位置收敛，形成四个模糊的“云团”，但由于未经载波同步，整个星座图可能仍在旋转，即仍为环形。
 
-#### **理论深度**
+#### **理论指导**
 
 定时同步的目标是克服由于收发双方时钟频率的细微偏差（符号时钟偏移）导致的采样点漂移问题。Gardner算法是一种高效的、不依赖于载波相位的定时误差检测（TED）算法。
 
@@ -270,17 +260,19 @@ $$
 
 #### **Farrow插值器优化（程梓睿创新实现）**
 
-在程梓睿的纯MATLAB实现中，采用了4阶Farrow立方插值器进行精确的分数延迟插值，这是该实现的技术亮点之一。
+在程梓睿的纯MATLAB实现中，采用了3阶Farrow立方插值器进行精确的分数延迟插值，这是该实现的技术亮点之一。
 
 **Farrow插值器原理**：
-Farrow插值器能够实现任意分数延迟的高精度插值，其多项式结构为：
-$$y(n+\mu) = \sum_{i=0}^{3} c_i(\mu) \cdot x(n-i)$$
+Farrow插值器能够实现任意分数延迟的高精度插值，采用3阶立方多项式结构。在本实现中，使用四个相邻数据点 $x(n-1)$, $x(n)$, $x(n+1)$, $x(n+2)$ 来插值计算 $x(n+\mu)$。
 
-其中$\mu$为分数延迟（0≤μ<1），$c_i(\mu)$为与延迟相关的多项式系数：
-- $c_0(\mu) = -\frac{1}{6}\mu^3 + \frac{1}{2}\mu^2 - \frac{1}{3}\mu$
-- $c_1(\mu) = \frac{1}{2}\mu^3 - \mu^2 + \frac{1}{2}$
-- $c_2(\mu) = -\frac{1}{2}\mu^3 + \frac{1}{2}\mu^2 + \mu$
-- $c_3(\mu) = \frac{1}{6}\mu^3 - \frac{1}{6}\mu$
+插值公式采用Horner形式计算，提高数值稳定性：
+$$y(n+\mu) = ((c_3 \cdot \mu + c_2) \cdot \mu + c_1) \cdot \mu + c_0$$
+
+其中$\mu$为分数延迟（0≤μ<1），多项式系数基于输入数据点动态计算：
+- $c_0 = x(n)$ 
+- $c_1 = \frac{1}{2}[x(n+1) - x(n-1)]$
+- $c_2 = x(n-1) - 2.5x(n) + 2x(n+1) - 0.5x(n+2)$
+- $c_3 = -0.5x(n-1) + 1.5x(n) - 1.5x(n+1) + 0.5x(n+2)$
 
 **技术优势**：
 相比传统线性插值，Farrow插值器能够获得更高的定时精度，特别是在高符号率系统中优势明显。这种优化对于处理真实卫星数据中的定时抖动和频率偏移具有重要意义。
@@ -342,7 +334,7 @@ end
 
 **复现与观察:**
 
-1.  在调试模式下，执行到 **第44行** (`s_qpsk_sto_sync = GardnerSymbolSync(...)`)。
+1.  在调试模式下，执行到 **第62行** (`s_qpsk_sto_sync = GardnerSymbolSync(...)`)。
 2.  **观察星座图:** 执行完此行后，在命令窗口绘制星座图。
     ```matlab
     scatterplot(s_qpsk_sto_sync);
@@ -360,70 +352,45 @@ end
 
 ### 5.3 模块详解: 载波同步 (PLL)
 
-**预期效果:** 经过PLL锁相环后，星座图的旋转被完全“锁住”，四个点簇将清晰、稳定地聚集在 `(1,1)`, `(1,-1)`, `(-1,1)`, `(-1,-1)` 的理想位置附近。这是接收机同步成功的标志性时刻。
+**预期效果:** 经过PLL锁相环后，星座图的旋转被完全"锁住"，四个点簇将清晰、稳定地聚集在理想位置附近。这是接收机同步成功的标志性时刻。
 
-#### **理论深度**
+#### **理论指导**
 
 载波同步的目标是补偿两类相位失真：
 1.  **载波频率偏移 (CFO):** 由发射机和接收机本地振荡器（晶振）的频率不完全一致引起，导致星座图持续旋转。
 2.  **载波相位偏移 (CPO):** 由信道延迟等因素引入的一个固定的相位偏移。
 
-本项目中不同技术路径采用了不同的载波恢复算法以适应不同的实现需求：
+#### **混合前馈/反馈PLL**
 
-#### **方法一：判决辅助PLL（程梓睿实现）**
-
-采用判决辅助的二阶锁相环进行载波恢复，这是一个经典的反馈控制系统。
+本项目采用了一种更优化的**混合式锁相环**，它结合了前馈（Feedforward）和反馈（Feedback）的优点，以实现快速锁定和精确跟踪。
 
 **工作机制:**
-1.  **相位误差检测 (Phase Detector):** 对于接收到的每一个符号 `y[n]`，首先对其进行硬判决，得到离它最近的理想星座点 `d[n]`。相位误差通过以下方式计算：
+1.  **前馈频率补偿:** 在进入环路之前，代码首先使用一个预估的中心频率偏移 `fc` 对信号进行粗略的频率校正。这通过在NCO的累加器中直接加入一个固定相位增量 `2 * pi * fc / fs` 来实现。这一步能够预先移除大部分的固定频偏，大大减轻后续反馈环路的负担，加快锁定速度。
+2.  **相位误差检测 (Phase Detector):** 对于经过粗略校正的每一个符号 `y[n]`，首先对其进行硬判决，得到离它最近的理想星座点 `d[n]`。相位误差通过以下方式**精确计算**：
     $$
     e[n] = \angle\{ y[n] \cdot \text{conj}(d[n]) \}
     $$
-    其中 `conj` 是复共轭，`angle` 函数直接计算复数的相位角。
+    其中 `conj` 是复共轭，`angle` 函数直接、精确地计算复数的相位角，比 `imag` 近似法更鲁棒。
+3.  **环路滤波器 (Loop Filter):** 检测出的瞬时误差 `e[n]` 充满了噪声。一个二阶环路滤波器（PI控制器）对误差进行平滑和积分，以获得对剩余相位误差的稳定估计。
+4.  **数控振荡器 (NCO):** NCO根据环路滤波器的输出，生成一个精细的校正相位，与前馈补偿量一起，产生最终的复数校正因子 `exp(-j * theta)`。
 
-2.  **环路滤波器 (Loop Filter):** 检测出的瞬时误差 `e[n]` 充满了噪声。环路滤波器（PI控制器）对误差进行平滑和积分，以获得对相位误差的稳定估计。
 
-3.  **数控振荡器 (NCO):** NCO根据环路滤波器的输出，生成一个校正相位 `theta`，产生复数校正因子 `exp(-j * theta)`。
+#### **参数选择: `fc`, `kp` 和 `ki`**
 
-#### **方法二：Costas环算法（汪曈熙实现）**
-
-采用QPSK Costas环进行载波恢复，其相位误差检测器为：
-$$
-e[n] = \text{sign}(\text{Re}\{r[n]\}) \cdot \text{Im}\{r[n]\} - \text{sign}(\text{Im}\{r[n]\}) \cdot \text{Re}\{r[n]\}
-$$
-
-Costas环的优点是不需要硬判决，能够在较低信噪比下工作。
-
-#### **方法三：四次方环算法（汪宇翔实现）**
-
-基于四次方谱线的频偏估计，结合Costas环进行相位跟踪，适合处理大频偏情况。
-
-**闭环工作:** 所有方法都遵循 `检测 -> 滤波 -> 校正` 的过程在每个符号上迭代进行，直到相位误差趋近于零，此时环路"锁定"，星座图停止旋转。
-
-#### **参数选择: 比例增益 `kp` 和积分增益 `ki`**
-
-在 [`lib/QPSKFrequencyCorrectPLL.m`](../student_cases/14+2022210532+chengzirui/lib/QPSKFrequencyCorrectPLL.m) 的实现中，`kp` 和 `ki` 是直接作为参数传入的。而在主脚本 [`SatelliteQPSKReceiverTest.m`](../student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m) 中，它们通常根据环路带宽 `Bn` 和阻尼系数 `zeta` 计算得出。`Bn` 被归一化到采样率 `fs`。
-
-一个常用的二阶环路PI控制器系数计算公式为：
-$$
-k_p = \frac{4 \zeta (B_n/f_s)}{1 + 2\zeta (B_n/f_s) + (B_n/f_s)^2}
-$$
-$$
-k_i = \frac{4 (B_n/f_s)^2}{1 + 2\zeta (B_n/f_s) + (B_n/f_s)^2}
-$$
-
-*   **`kp` (比例增益):** 决定了环路对当前瞬时相位误差的响应强度。`kp` 越大，响应越快，但对噪声也越敏感。
-*   **`ki` (积分增益):** 决定了环路对累积相位误差的响应强度。`ki` 的作用是消除稳态误差。如果没有积分项，PLL只能跟踪相位偏移（CPO），而无法跟踪频率偏移（CFO）。只有积分器才能将恒定的频率偏移（表现为线性增长的相位）所产生的持续相位误差累加起来，最终输出一个恒定的校正量来抵消它。
+*   **`fc` (预估频偏):** 一个重要的输入参数，代表对载波中心频率偏移的先验估计值。准确的 `fc` 可以显著提高锁定性能。
+*   **`kp` (比例增益) 和 `ki` (积分增益):** 这两个反馈环路的参数通常根据归一化环路带宽 `Bn` 和阻尼系数 `zeta` 计算得出。
+    *   **`kp` (比例增益):** 决定了环路对当前瞬时相位误差的响应强度。
+    *   **`ki` (积分增益):** 决定了环路对累积相位误差的响应强度。`ki` 的作用是消除稳态误差，确保能够跟踪残余的频率偏移。
 
 **本项目中的取值 (`config.pll_bandWidth=0.02`, `config.pll_dampingFactor=0.707`)**:
 *   这里的环路带宽 `Bn` 被设置为 `0.02`，它是一个归一化值，通常相对于采样率。这是一个中等带宽的环路，能够在较短时间内锁定，同时保持较好的噪声抑制性能。
 
 #### **代码实现与复现**
 
-在 [`lib/QPSKFrequencyCorrectPLL.m`](../student_cases/14+2022210532+chengzirui/lib/QPSKFrequencyCorrectPLL.m) 中，实现了PLL的核心逻辑。
+在 [`lib/QPSKFrequencyCorrectPLL.m`](../student_cases/14+2022210532+chengzirui/lib/QPSKFrequencyCorrectPLL.m) 中，实现了混合式PLL的核心逻辑。
 
 ```matlab
-% lib/QPSKFrequencyCorrectPLL.m (部分关键代码)
+% lib/QPSKFrequencyCorrectPLL.m (代码与文档同步后的版本)
 
 function [y,err] = QPSKFrequencyCorrectPLL(x,fc,fs,ki,kp)
     theta = 0;
@@ -434,20 +401,20 @@ function [y,err] = QPSKFrequencyCorrectPLL(x,fc,fs,ki,kp)
        x(m) = x(m) * exp(-1j*(theta));
         
        % 2. 判决辅助的相位误差检测
-       % 找到最近的理想QPSK星座点 (硬判决)
-       desired_point = (sign(real(x(m))) + 1j*sign(imag(x(m)))) / sqrt(2); % 归一化
+       % 找到最近的理想QPSK星座点 (硬判决, 未归一化)
+       % 注意: 此处未进行 /sqrt(2) 归一化，与理论略有出入，但实现有效
+       desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j;
        
-       % 计算相位差 (e ≈ imag(y*conj(d)))
-       angleErr = imag(x(m) * conj(desired_point));
+       % 精确计算相位差
+       angleErr = angle(x(m)*conj(desired_point));
        
        % 3. 二阶环路滤波器 (PI控制器)
-       % 比例部分: kp * angleErr
-       % 积分部分: ki * (theta_integral + angleErr)
        theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
        theta_integral = theta_integral + angleErr; % 累积误差
        
-       % 4. NCO: 更新总相位
-       theta = theta + theta_delta;
+       % 4. NCO: 更新总相位 (反馈 + 前馈)
+       % 除了反馈控制量theta_delta，还加入了前馈的固定频率补偿
+       theta = theta + theta_delta + 2 * pi * fc / fs;
        
        % 输出当前已校正的信号
        y(m) = x(m);
@@ -457,14 +424,14 @@ end
 
 **复现与观察:**
 
-1.  在调试模式下，执行到 **第47行** (`s_qpsk_cfo_sync = QPSKFrequencyCorrectPLL(...)`)。
+1.  在调试模式下，执行到 **第65行** (`s_qpsk_cfo_sync = QPSKFrequencyCorrectPLL(...)`)。
 2.  **观察星座图 (决定性的一步):** 执行完此行后，在命令窗口绘制星座图。
     ```matlab
     scatterplot(s_qpsk_cfo_sync);
     title('载波同步后的星座图');
     grid on;
     ```
-    此时，您应该能看到一个**清晰、稳定**的QPSK星座图。四个点簇分别紧密地聚集在 `(1,1)`, `(1,-1)`, `(-1,1)`, `(-1,-1)` 的位置附近（或其某个 $\pi/2$ 的整数倍相偏位置，这将在后续差分解码中解决）。这标志着接收机的同步过程已圆满成功！
+    此时，您应该能看到一个**清晰、稳定**的QPSK星座图。四个点簇分别紧密地聚集在理想位置附近。这标志着接收机的同步过程已圆满成功！
 
 ---
 
@@ -486,15 +453,15 @@ end
 
 *   **目标:** 恢复被加扰的原始数据。根据《卫星数传信号帧格式说明.pdf》，在发射端，数据在LDPC编码后、加入同步字之前，经过了加扰处理。加扰的目的是打破数据中可能存在的长串“0”或“1”，保证信号频谱的均匀性，这有利于接收端各同步环路的稳定工作。
 *   **工作机制:**
-    1.  **加扰多项式:** 加扰器基于一个本原多项式 **`1 + X^14 + X^15`** 来生成伪随机二进制序列 (PRBS)。
+    1.  **加扰多项式:** 加扰器基于一个本原多项式 $1 + X^{14} + X^{15}$ 来生成伪随机二进制序列 (PRBS)。
     2.  **不同初相:** I路和Q路的加扰器使用不同的初始状态（初相），以生成两路独立的PRBS。
-        *   I路初相: `111111111111111` (二进制)
-        *   Q路初相: `000000011111111` (二进制)
+        *   I路初相: `111111111111111` (二进制，左为高位)
+        *   Q路初相: `000000011111111` (二进制，左为高位)
     3.  **解扰实现:** 在接收端，[`lib/FrameScramblingModule.m`](lib/FrameScramblingModule.m:1) 会根据同样的配置（多项式和初相）生成一个完全同步的PRBS。将接收到的加扰数据流与本地生成的PRBS再次进行按位异或（XOR）。根据逻辑运算 `(Data XOR PRBS) XOR PRBS = Data`，即可恢复出LDPC编码后的数据。
 *   **关键:** 解扰成功的关键在于，接收端的PRBS生成器（LFSR）的配置必须与发射端完全一致，并且其起始状态需要通过帧同步来精确对齐。
 
 **复现与观察:**
-1.  执行 **第50行** 和 **第53行**。
+1.  执行 **第68行** (帧同步) 和 **第131行** (解扰)。
 2.  观察工作区的变量 `sync_frame`，它的维度 `[rows, columns]` 表示找到了 `rows` 个完整的数据帧。
 3.  观察最终的 `I_array` 和 `Q_array`，它们包含了最终恢复的、解扰后的比特信息。
 
@@ -521,9 +488,9 @@ end
 
 ### 6.3 (进阶) 编写AOS帧头解析器进行验证
 
-最能证明接收机正确性的方法，是直接解析恢复出的AOS帧头，并验证其内部字段的有效性。以下是如何编写一个简单的MATLAB函数来完成此任务。
+最能证明接收机正确性的方法，是直接解析恢复出的AOS帧头，并验证其内部字段的有效性。
 
-1.  **创建解析函数:** 在您的 `lib` 文件夹下，创建一个新文件 `AOSFrameHeaderDecoder.m`。
+1.  **创建解析函数:** 在您的 `lib` 文件夹下，创建一个新文件 `AOSFrameHeaderDecoder.m`（实际已存在于该目录下）。
 
     #### **AOS帧头结构定义**
 
@@ -610,46 +577,18 @@ end
     *   在MATLAB命令窗口，您应该能看到类似下面的输出：
 
     ```
-    --- Verifying recovered I-channel frames ---
     --- AOS Frame Header Decoded ---
-    Version: 1
-    Spacecraft ID: 40 (0x28)
-    Virtual Channel ID: 0
-    Frame Count: 514313
-    --------------------------------
-    --- AOS Frame Header Decoded ---
-    Version: 1
-    Spacecraft ID: 40 (0x28)
-    Virtual Channel ID: 0
-    Frame Count: 514314
-    --------------------------------
-    --- AOS Frame Header Decoded ---
-    Version: 1
-    Spacecraft ID: 40 (0x28)
-    Virtual Channel ID: 0
-    Frame Count: 514315
+                    versionId: 1
+                    satelliteType: "03组"
+        satelliteVirtualChannelId: "03组 有效数据"
+            satelliteVCDUCounter: 532605
+                satelliteReplyId: "回放"
+            satelliteDownloadId: "单路下传"
+                satelliteIQDataId: "I路"
+            satelliteDigitalSpeed: "150Mbps"
     --------------------------------
     ```
-    *   **关键验证点:**
-        *   `Spacecraft ID` 是一个固定的值 (例如40)。
-        *   `Frame Count` 应该是 **连续递增** 的。这强有力地证明了您的接收机不仅正确解调了数据，而且没有丢失任何帧。
-如果您拥有原始的发送数据，或者能够根据某些已知的帧内容（如信标信息）构造出发射序列，您可以使用MATLAB的 `biterr` 函数来计算误码率(BER)。
 
-假设您构造了一个名为 `transmitted_bits` 的已知发送比特序列，对应于接收到的 `received_bits`：
-
-```matlab
-% 假设 I_array 是接收到的I路比特矩阵
-received_bits = reshape(I_array', 1, []); % 将其转换为行向量
-
-% 假设你知道前N个比特的正确序列
-N = length(transmitted_bits);
-[number_of_errors, bit_error_rate] = biterr(transmitted_bits, received_bits(1:N));
-
-fprintf('误码数: %d\n', number_of_errors);
-fprintf('误码率 (BER): %e\n', bit_error_rate);
-```
-
-这是一个衡量通信系统性能的最终指标。
 
 ---
 
