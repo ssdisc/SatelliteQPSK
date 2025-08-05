@@ -83,10 +83,9 @@ QPSK是一种高效的数字调制技术，它在每个符号（Symbol）中编�
 | **工程化程度** | 基础 | 较高 | 中等 |
 
 ---
-
 ## 3. 系统架构与处理流程
 
-本QPSK接收机的处理流程是模块化的，每个模块负责一个特定的信号处理任务。主脚本 [`SatelliteQPSKReceiverTest.m`](SatelliteQPSKReceiverTest.m) 负责配置全局参数，并调用核心处理函数 [`lib/SatelliteQPSKReceiver.m`](lib/SatelliteQPSKReceiver.m)。其内部处理流程如下图所示，并将在后续章节中进行深度解析。
+本QPSK接收机的处理流程是模块化的，每个模块负责一个特定的信号处理任务。主脚本 [`SatelliteQPSKReceiverTest.m`](../student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m) 负责配置全局参数，并调用核心处理函数 [`lib/SatelliteQPSKReceiver.m`](../student_cases/14+2022210532+chengzirui/lib/SatelliteQPSKReceiver.m)。其内部处理流程如下图所示，并将在后续章节中进行深度解析。
 
 ```mermaid
 graph TD
@@ -120,7 +119,7 @@ graph TD
 5.  **定时同步:** (Gardner) 找到每个符号波形的“最佳”采样时刻。
 6.  **载波同步:** (PLL) 校正频率与相位偏差，锁定星座图。
 7.  **相位模糊恢复 & 帧同步:** 由于QPSK的相位对称性，PLL锁定后可能存在0, 90, 180, 270度的相位模糊。此模块通过穷举四种相位并与已知的`1ACFFC1D`同步字进行相关匹配，在确定正确相位的同时，定位数据帧的起始边界。
-8.  **解扰:** 根据CCSDS标准，使用`1+X^14+X^15`多项式，对已同步的帧数据进行解扰，恢复出经LDPC编码后的原始数据。
+8.  **解扰:** 根据CCSDS标准，使用$1+X^{14}+X^{15}$多项式，对已同步的帧数据进行解扰，恢复出经LDPC编码后的原始数据。
 9.  **数据输出:** 将恢复的比特流转换为字节，并写入文件。此时的数据包含AOS帧头、数据负载和LDPC校验位。
 
 > **旁注：基于Simulink的替代实现**
@@ -130,8 +129,6 @@ graph TD
 > *   **代码生成:** 可以从Simulink模型直接生成高效的C/C++或HDL代码，用于嵌入式系统部署。
 >
 > 一个典型的Simulink实现会使用 `Communications Toolbox` 中的 `RRC Filter`, `AGC`, `Symbol Synchronizer` 和 `Carrier Synchronizer` 等模块来构建接收链路。
-
----
 
 ---
 
@@ -148,16 +145,16 @@ graph TD
 
 ### 4.2 关键文件解析
 
-*   [`SatelliteQPSKReceiverTest.m`](SatelliteQPSKReceiverTest.m:1): **主测试脚本**。这是您需要运行的入口文件。它定义了所有的配置参数（如文件名、采样率、符号率等），调用核心接收机函数，并负责绘制最终的调试图窗。
-*   [`lib/SatelliteQPSKReceiver.m`](lib/SatelliteQPSKReceiver.m:1): **核心接收机封装器**。该函数按照第2节描述的流程，依次调用各个信号处理模块，实现了完整的接收链路。
+*   [`SatelliteQPSKReceiverTest.m`](../student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m): **主测试脚本**。这是您需要运行的入口文件。它定义了所有的配置参数（如文件名、采样率、符号率等），调用核心接收机函数，并负责绘制最终的调试图窗。
+*   [`lib/SatelliteQPSKReceiver.m`](../student_cases/14+2022210532+chengzirui/lib/SatelliteQPSKReceiver.m): **核心接收机封装器**。该函数按照第2节描述的流程，依次调用各个信号处理模块，实现了完整的接收链路。
 *   `lib/`: **核心函数库目录**。存放了所有独立的信号处理模块，例如：
-    *   [`lib/SignalLoader.m`](lib/SignalLoader.m:1): 数据加载模块。
-    *   [`lib/RRCFilterFixedLen.m`](lib/RRCFilterFixedLen.m:1): RRC滤波器。
-    *   [`lib/GardnerSymbolSync.m`](lib/GardnerSymbolSync.m:1): Gardner定时同步算法。
-    *   [`lib/QPSKFrequencyCorrectPLL.m`](lib/QPSKFrequencyCorrectPLL.m:1): 载波同步锁相环。
-    *   [`lib/FrameSync.m`](lib/FrameSync.m:1): 帧同步模块。
+    *   [`lib/SignalLoader.m`](../student_cases/14+2022210532+chengzirui/lib/SignalLoader.m): 数据加载模块。
+    *   [`lib/RRCFilterFixedLen.m`](../student_cases/14+2022210532+chengzirui/lib/RRCFilterFixedLen.m): RRC滤波器。
+    *   [`lib/GardnerSymbolSync.m`](../student_cases/14+2022210532+chengzirui/lib/GardnerSymbolSync.m): Gardner定时同步算法。
+    *   [`lib/QPSKFrequencyCorrectPLL.m`](../student_cases/14+2022210532+chengzirui/lib/QPSKFrequencyCorrectPLL.m): 载波同步锁相环。
+    *   [`lib/FrameSync.m`](../student_cases/14+2022210532+chengzirui/lib/FrameSync.m): 帧同步模块。
     *   ...等等。
-*   [`Ibytes.txt`](Ibytes.txt:1) / [`Qbytes.txt`](Qbytes.txt:1): **输出文件**。接收机成功运行后，恢复出的I路和Q路数据将以字节流的形式分别保存在这两个文本文件中。
+*   [`Ibytes.txt`](../student_cases/14+2022210532+chengzirui/out/Ibytes.txt) / [`Qbytes.txt`](../student_cases/14+2022210532+chengzirui/out/Qbytes.txt): **输出文件**。接收机成功运行后，恢复出的I路和Q路数据将以字节流的形式分别保存在这两个文本文件中。
 
 ---
 
@@ -167,9 +164,9 @@ graph TD
 
 ### **预备步骤：开始调试**
 
-1.  打开主脚本 [`SatelliteQPSKReceiverTest.m`](SatelliteQPSKReceiverTest.m:1)。
+1.  打开主脚本 [`SatelliteQPSKReceiverTest.m`](../student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m)。
 2.  熟悉 `config` 结构体中的各项参数，特别是 `startBits` 和 `bitsLength`，它们决定了从数据文件的哪个位置开始处理，以及处理多长的数据段。
-3.  在 [`lib/SatelliteQPSKReceiver.m`](lib/SatelliteQPSKReceiver.m:1) 的 **第32行** (`s_qpsk = SignalLoader(...)`) 设置一个断点。
+3.  在 [`lib/SatelliteQPSKReceiver.m`](../student_cases/14+2022210532+chengzirui/lib/SatelliteQPSKReceiver.m) 的 **第32行** (`s_qpsk = SignalLoader(...)`) 设置一个断点。
 4.  返回主脚本，按 `F5` 键开始调试。程序将执行到该断点处暂停。
 
 ---
@@ -213,7 +210,7 @@ $$
 
 #### **代码实现与复现**
 
-在 [`lib/RRCFilterFixedLen.m`](lib/RRCFilterFixedLen.m:1) 中，核心是MATLAB的 `rcosdesign` 函数。
+在 [`lib/RRCFilterFixedLen.m`](../student_cases/14+2022210532+chengzirui/lib/RRCFilterFixedLen.m) 中，核心是MATLAB的 `rcosdesign` 函数。
 
 ```matlab
 % lib/RRCFilterFixedLen.m
@@ -290,7 +287,7 @@ $$y(n+\mu) = \sum_{i=0}^{3} c_i(\mu) \cdot x(n-i)$$
 
 #### **参数选择: 环路带宽 `Bn` 和阻尼系数 `zeta`**
 
-在 [`lib/GardnerSymbolSync.m`](lib/GardnerSymbolSync.m:1) 中，环路滤波器的特性由 `B_loop` (归一化环路带宽) 和 `zeta` (阻尼系数) 决定。
+在 [`lib/GardnerSymbolSync.m`](../student_cases/14+2022210532+chengzirui/lib/GardnerSymbolSync.m) 中，环路滤波器的特性由 `B_loop` (归一化环路带宽) 和 `zeta` (阻尼系数) 决定。
 
 *   **环路带宽 `Bn` (或 `B_loop`)**:
     *   **物理意义**: 决定了环路对定时误差的跟踪速度和响应能力。它通常被归一化到符号速率 `f_sym`。带宽越宽，环路锁定速度越快，能跟踪的频率偏差范围也越大。
@@ -305,7 +302,7 @@ $$y(n+\mu) = \sum_{i=0}^{3} c_i(\mu) \cdot x(n-i)$$
 
 #### **代码实现与复现**
 
-在 [`lib/GardnerSymbolSync.m`](lib/GardnerSymbolSync.m:1) 中，核心逻辑在 `for` 循环内。
+在 [`lib/GardnerSymbolSync.m`](../student_cases/14+2022210532+chengzirui/lib/GardnerSymbolSync.m) 中，核心逻辑在 `for` 循环内。
 
 ```matlab
 % lib/GardnerSymbolSync.m (部分关键代码)
@@ -405,7 +402,7 @@ Costas环的优点是不需要硬判决，能够在较低信噪比下工作。
 
 #### **参数选择: 比例增益 `kp` 和积分增益 `ki`**
 
-在 [`lib/QPSKFrequencyCorrectPLL.m`](lib/QPSKFrequencyCorrectPLL.m:1) 的实现中，`kp` 和 `ki` 是直接作为参数传入的。而在主脚本 [`SatelliteQPSKReceiverTest.m`](SatelliteQPSKReceiverTest.m:1) 中，它们通常根据环路带宽 `Bn` 和阻尼系数 `zeta` 计算得出。`Bn` 被归一化到采样率 `fs`。
+在 [`lib/QPSKFrequencyCorrectPLL.m`](../student_cases/14+2022210532+chengzirui/lib/QPSKFrequencyCorrectPLL.m) 的实现中，`kp` 和 `ki` 是直接作为参数传入的。而在主脚本 [`SatelliteQPSKReceiverTest.m`](../student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m) 中，它们通常根据环路带宽 `Bn` 和阻尼系数 `zeta` 计算得出。`Bn` 被归一化到采样率 `fs`。
 
 一个常用的二阶环路PI控制器系数计算公式为：
 $$
@@ -423,7 +420,7 @@ $$
 
 #### **代码实现与复现**
 
-在 [`lib/QPSKFrequencyCorrectPLL.m`](lib/QPSKFrequencyCorrectPLL.m:1) 中，实现了PLL的核心逻辑。
+在 [`lib/QPSKFrequencyCorrectPLL.m`](../student_cases/14+2022210532+chengzirui/lib/QPSKFrequencyCorrectPLL.m) 中，实现了PLL的核心逻辑。
 
 ```matlab
 % lib/QPSKFrequencyCorrectPLL.m (部分关键代码)
@@ -1146,7 +1143,7 @@ end
     *   **CCSDS (Consultative Committee for Space Data Systems):** 空间数据系统咨询委员会发布的一系列关于AOS (Advanced Orbiting Systems) 的建议标准（蓝皮书），是本通信协议的根本依据。
 
 3.  **项目实践报告 (Project Implementation Reports):**
-    *   [`14+2022210532+程梓睿+卫星下行接收报告.pdf`](14+2022210532+程梓睿+卫星下行接收报告.pdf)
-    *   [`2022211110-2022210391-汪曈熙-卫星下行接收报告.pdf`](2022211110-2022210391-汪曈熙-卫星下行接收报告.pdf)
-    *   [`2022211110-2022210394-汪宇翔-卫星下行接收报告.pdf`](2022211110-2022210394-汪宇翔-卫星下行接收报告.pdf)
+    *   [`14+2022210532+程梓睿+卫星下行接收报告.pdf`](../student_cases/14+2022210532+chengzirui/14+2022210532+程梓睿+卫星下行接收报告.pdf)
+    *   [`2022211110-2022210391-汪曈熙-卫星下行接收报告.pdf`](../student_cases/2022211110-2022210391-wangtongxi/2022211110-2022210391-汪曈熙-卫星下行接收报告.pdf)
+    *   [`2022211110-2022210394-汪宇翔-卫星下行接收报告.pdf`](../student_cases/2022211110-2022210394-wangyuxiang/2022211110-2022210394-汪宇翔-卫星下行接收报告.pdf)
     *   (这些报告提供了宝贵的实践见解、代码实现和问题排查案例，极大地丰富了本教程的深度和实用性。)
