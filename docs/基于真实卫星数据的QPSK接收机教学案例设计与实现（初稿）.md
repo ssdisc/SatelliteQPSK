@@ -156,10 +156,17 @@ Gardner算法是一种非数据辅助的符号定时恢复算法，通过在每�
 ## 参考文献
 
 [1] 刘奕彤, 尹良, 郑平, 顾仁涛, 杨鸿文. 基于口袋化的软件无线电通信实践教学创新[J]. 实验室研究与探索, 2022, 41(9): 204-207.
+
 [2] 周依. 新工科理念下通信工程专业实践教学改革研究. 教育探讨. 2024 Oct 14;6(3).
+
 [3] 蒋帅捷.“互联网+”视域下通信工程专业人才培养对策研究[J].中国新通信,2024,26(22):98-100
+
 [4] Gao, Hongfeng, et al. "Project-Based Communication System Design Course." 2016 International Seminar on Education Innovation and Economic Management (SEIEM 2016). Atlantis Press, 2016.
+
 [5] Stewart, Robert W., et al. "A low-cost desktop software defined radio design environment using MATLAB, simulink, and the RTL-SDR." IEEE Communications Magazine 53.9 (2015): 64-71.
+
 [6] 丁汉,曾惠霞,肖平.新工科背景下Matlab与通信系统仿真课程的探索与实践[J].电脑知识与技术,2025,21(7):144-146
+
 [7] Baotic, Perica, et al. "Simulation model of DVB-S2 system." Proceedings ELMAR-2013. IEEE, 2013.
+
 [8] Abusedra, Lamia Fathi, Amer Mohamed Daeri, and Amer Ragab Zerek. "Implementation and performance study of the LDPC coding in the DVB-S2 link system using MATLAB." 2016 17th International Conference on Sciences and Techniques of Automatic Control and Computer Engineering (STA). IEEE, 2016.
