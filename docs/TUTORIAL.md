@@ -646,7 +646,7 @@ end
 % Farrow立方插值器（程梓睿创新点）
 function y = farrowInterpolator(x, mu)
     % mu: 分数延迟 [0,1)
-    % 实现4阶Farrow结构
+    % 实现3阶Farrow结构
     c3 = -1/6;  c2 = 1/2;  c1 = -1/2;  c0 = 1/6;
     y = ((c3*mu + c2)*mu + c1)*mu + c0;
 end
