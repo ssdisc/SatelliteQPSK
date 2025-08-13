@@ -1,6 +1,6 @@
 # Simulation Output
 *.fc32
-*.bin
+sample_0611_500MHz_middle.bin
 Ibytes.txt
 Qbytes.txt
 Ibytes_full.txt
