@@ -5,14 +5,19 @@ clc;clear;
 
 
 %% 定义参数对象
-config.inputDataFilename = "data/sample_0611_500MHz_middle.bin";%611采集数据，约60G
+config.inputDataFilename = "data/small_sample_256k.bin";% 使用小数据文件进行测试
 config.sourceSampleRate = 500e6;% 原始信号采样率
 config.resampleMolecule = 3;% 重采样分子
 config.resampleDenominator = 10;% 重采样分母
 config.fs = 150e6;% 重采样后的采样率
 config.fb = 150e6;% 数传速率150Mbps
-config.startBits = 500e6;% 文件读取数据的起始点
-config.bitsLength = 256e3;% 单次处理点
+config.startBits = 0;% 文件读取数据的起始点
+
+% 设置处理所有数据点（使用-1表示读取文件中所有数据）
+config.bitsLength = -1;  % 自动处理文件中的所有数据
+
+fprintf('将自动处理文件中的所有数据点\n');
+
 config.rollOff = 0.33;% 滚降系数
 
 

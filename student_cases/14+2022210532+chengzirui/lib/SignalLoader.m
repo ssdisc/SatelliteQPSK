@@ -9,7 +9,14 @@ fid = fopen(filename, 'rb');
 fseek(fid, (pointStart - 1) * 8, 'bof');
 
 % 读取数据
-raw = fread(fid, [2, Nread], 'int16');% float32 int16
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
 y = complex(raw(1,:), raw(2,:));
 
 %关闭指针

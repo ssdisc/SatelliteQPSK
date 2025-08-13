@@ -1,0 +1,11 @@
+[警告: 名称不存在或不是目录: D:\matlabfiles\telecomModeling\SatelliteQPSK\student_cases\14+2022210532+chengzirui\student_cases\14+2022210532+chengzirui\lib] 
+[> 位置：path (第 109 行)
+位置: addpath>doPathAddition (第 126 行)
+位置: addpath (第 90 行)
+位置: SatelliteQPSKReceiverTest (第 2 行)] 
+将自动处理文件中的所有数据点
+{函数或变量 'SatelliteQPSKReceiver' 无法识别。
+
+出错 SatelliteQPSKReceiverTest (第 37 行)
+[I_bytes,Q_bytes] = SatelliteQPSKReceiver(config);
+} 
