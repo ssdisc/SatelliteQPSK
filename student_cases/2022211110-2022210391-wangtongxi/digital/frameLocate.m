@@ -1,7 +1,7 @@
 symbolsData=symbols.Data;
 mask=~cellfun('isempty', symbolsData);
 symbolsClean = cell2mat(symbolsData(mask));
-bits=qpsk_demod(symbolsClean);
+bits=~qpsk_demod(symbolsClean);
 
 bitsI=bits(1:2:end);
 bitsQ=bits(2:2:end);

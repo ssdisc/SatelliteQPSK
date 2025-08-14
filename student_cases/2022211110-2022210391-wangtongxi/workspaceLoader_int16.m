@@ -1,6 +1,6 @@
 % 设置文件路径和要读取的复数点个数
-filename = "data/sample_0611_500MHz_middle.bin";
-N = 1000000; 
+filename = "data/small_sample_256k.bin";
+N = 256e3; 
 
 % 打开文件
 fid = fopen(filename, 'rb');
@@ -10,9 +10,10 @@ rs = 75e6;
 r = 3;
 fs = oriFs*r;
 
-offset = 4000000;  % 字节偏移量
-% 跳过 offset 字节
-seekRes=fseek(fid, offset, 'bof');
+% 小数据文件不需要偏移量
+% offset = 4000000;  % 字节偏移量
+% % 跳过 offset 字节
+% seekRes=fseek(fid, offset, 'bof');
 % 每个复数点由两个 int16 组成：实部 + 虚部
 % 因此读取前 2*N 个 int16 即可
 raw_data = fread(fid, 2*N, 'int16=>double').';
