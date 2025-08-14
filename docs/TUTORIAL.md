@@ -1,7 +1,4 @@
 # 卫星QPSK接收机MATLAB实现深度解析教程
-
-**版本: 2.0**
-
 ---
 
 ## 1. 项目简介与理论背景
@@ -87,28 +84,7 @@ QPSK是一种高效的数字调制技术，它在每个符号（Symbol）中编�
 
 本QPSK接收机的处理流程是模块化的，每个模块负责一个特定的信号处理任务。主脚本 [`SatelliteQPSKReceiverTest.m`](../student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m) 负责配置全局参数，并调用核心处理函数 [`lib/SatelliteQPSKReceiver.m`](../student_cases/14+2022210532+chengzirui/lib/SatelliteQPSKReceiver.m)。其内部处理流程如下图所示，并将在后续章节中进行深度解析。
 
-```mermaid
-graph TD
-    A["原始IQ数据文件<br>(.bin, 500Msps)"] --> B{"信号加载<br>SignalLoader"};
-    B --> C{"重采样<br>resample (to 150Msps)"};
-    C --> D{"RRC脉冲成形滤波<br>RRCFilterFixedLen"};
-    D --> E{"自动增益控制 (AGC)<br>AGC_Normalize"};
-    E --> F{"定时同步 (Gardner)<br>GardnerSymbolSync"};
-    F --> G{"载波同步 (PLL)<br>QPSKFrequencyCorrectPLL"};
-    G --> H{"相位模糊恢复 & 帧同步<br>FrameSync"};
-    H --> I{"解扰<br>FrameScramblingModule"};
-    I --> J["恢复的字节流<br>(包含LDPC校验码)"];
 
-    subgraph "预处理"
-        B; C; D; E;
-    end
-    subgraph "同步"
-        F; G; H;
-    end
-    subgraph "数据恢复"
-        I; J;
-    end
-```
 
 **各模块核心功能简介:**
 
@@ -140,7 +116,7 @@ graph TD
 
 1.  **MATLAB环境:** 推荐使用 R2021a 或更高版本，以确保所有函数（特别是信号处理工具箱中的函数）都可用。
 2.  **项目文件:** 下载或克隆整个项目到您的本地工作目录（例如 `D:\matlab\SatelliteQPSK`）。
-3.  **数据文件:** 获取项目数据文件（如`sample_0611_500MHz_middle.bin`），并将其放置在项目的`data/`目录下。这是一个16位复数（int16）格式的文件，原始采样率为500MHz，其中I和Q分量交错存储。
+3.  **数据文件:** 获取项目数据文件（如`sample_0611_500MHz_middle.bin`），并将其放置在项目的`data/`目录下。这是一个16位复数（int16）格式的文件，原始采样率为500MHz，其中I和Q分量交错存储。也可直接使用提供的1MB测试数据。
 4.  **MATLAB路径:** 打开MATLAB，并将当前目录切换到您解压的项目根目录。同时，将 `lib` 目录添加到MATLAB的搜索路径中，或在主脚本中通过 `addpath('lib')` 添加。
 
 ### 4.2 关键文件解析
