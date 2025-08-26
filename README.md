@@ -4,15 +4,14 @@
 
 ## 🎯 项目简介
 
-本项目是北京邮电大学"通信系统建模与仿真"课程的**创新教学案例**，基于北邮70周年校庆期间接收的**真实SAR卫星下行数据**，设计实现了完整的QPSK数字接收机系统。项目采用**开放式技术路径设计理念**，支持学生根据自身技术背景和兴趣自主选择实现方案，已通过三组学生的成功实践验证。
+本项目是北京邮电大学"通信系统建模与仿真"课程的**创新教学案例**，基于北邮70周年校庆期间接收的**真实SAR卫星下行数据**，设计实现了完整的QPSK数字接收机系统。项目采用**开放式技术路径设计理念**，支持学生根据自身技术背景和兴趣自主选择实现方案，已通过多位学生的成功实践验证，本项目引用了一位同学的实现，分享给爱好者进行研究学习使用。
 
 ### ✨ 核心特色
 
 - 🛰️ **真实工程数据**：使用53.7GB真实SAR卫星中频IQ数据，体验工程级信号处理挑战
-- 🔧 **开放式设计**：三种技术路径可选，满足不同学习风格和技术背景需求
 - 🔗 **完整链路**：从信号预处理到数据恢复的端到端QPSK接收机实现
 - 📚 **教学导向**：详细教程和理论分析
-- 🏆 **实践验证**：经过三组学生的实际项目验证，教学效果显著
+- 🏆 **实践验证**：经过多位学生的实际项目验证，教学效果显著
 
 ## 📖 项目背景
 
@@ -61,35 +60,17 @@ SatelliteQPSK/
 │   ├── 📄 DVB-S2技术标准.pdf
 │   └── 📄 [其他6个参考文献]
 ├── 📂 student_cases/                   # 🎓 学生实现案例集
-│   ├── 📂 14+2022210532+chengzirui/    # 🔵 程梓睿：纯MATLAB实现
-│   │   ├── 🎯 SatelliteQPSKReceiverTest.m        # 主测试脚本
-│   │   ├── 📂 lib/                              # 24个核心算法模块
-│   │   │   ├── 🔧 SatelliteQPSKReceiver.m       # 主处理函数
-│   │   │   ├── ⏱️ GardnerSymbolSync.m           # Gardner定时同步
-│   │   │   ├── 📡 QPSKFrequencyCorrectPLL.m     # PLL载波同步
-│   │   │   ├── 🎯 FrameSync.m                   # 帧同步算法
-│   │   │   ├── 🔓 FrameScramblingModule.m       # 解扰模块
-│   │   │   ├── 🔍 AOSFrameHeaderDecoder.m       # AOS帧头解析
-│   │   │   └── 🧩 [18+其他核心模块]
-│   │   ├── 📂 out/                              # 输出结果目录
-│   │   └── 📊 技术报告.pdf                      # 详细技术文档
-│   ├── 📂 2022211110-2022210391-wangtongxi/     # 🟡 汪曈熙：混合架构实现
-│   │   ├── 📊 qpskrx.slx                        # 主Simulink模型
-│   │   ├── 📡 qpsk_carrier_sync.m               # 载波同步MATLAB函数
-│   │   ├── ⏱️ gardner.m                          # Gardner符号同步
-│   │   ├── 📂 digital/                          # 数字处理模块目录
-│   │   │   ├── 🎯 frameLocate.m                 # 帧定位算法
-│   │   │   ├── 🔧 frameProcess.m                # 帧处理算法
-│   │   │   ├── 🔓 ccsds_ldpc_decoder.m          # LDPC解码器
-│   │   │   └── 🧮 generate_prbs32767.m          # PRBS序列生成
-│   │   └── 📊 技术报告.pdf                      # 详细技术文档
-│   └── 📂 2022211110-2022210394-wangyuxiang/    # 🟢 汪宇翔：向量化优化实现
-│       ├── 📥 A_read_data.m                     # 数据读取与预处理
-│       ├── 🔬 B_data_analyze.m                  # 信号分析与解调
-│       ├── 📊 sar_simulink.slx                  # Simulink前端处理模型
-│       ├── 🔍 find_sync_word.m                  # 高效同步字检测
-│       ├── 📦 extract_frames.m                  # 向量化帧提取
-│       ├── 🔓 descramble_array.m                # 优化解扰算法
+│   └── 📂 14+2022210532+chengzirui/    # 🔵 程梓睿：纯MATLAB实现
+│       ├── 🎯 SatelliteQPSKReceiverTest.m        # 主测试脚本
+│       ├── 📂 lib/                              # 24个核心算法模块
+│       │   ├── 🔧 SatelliteQPSKReceiver.m       # 主处理函数
+│       │   ├── ⏱️ GardnerSymbolSync.m           # Gardner定时同步
+│       │   ├── 📡 QPSKFrequencyCorrectPLL.m     # PLL载波同步
+│       │   ├── 🎯 FrameSync.m                   # 帧同步算法
+│       │   ├── 🔓 FrameScramblingModule.m       # 解扰模块
+│       │   ├── 🔍 AOSFrameHeaderDecoder.m       # AOS帧头解析
+│       │   └── 🧩 [18+其他核心模块]
+│       ├── 📂 out/                              # 输出结果目录
 │       └── 📊 技术报告.pdf                      # 详细技术文档
 └── 📂 data/                            # 🗄️ 数据文件目录
     ├── 💾 sample_0611_500MHz_middle.bin # 真实SAR卫星数据文件（53.7GB，未直接提供，需自行网盘下载）
@@ -140,7 +121,6 @@ SatelliteQPSK/
 - **必需工具箱**：
   - Signal Processing Toolbox
   - Communications Toolbox
-  - Simulink（路径二、三需要）
 - **硬件要求**：
   - 内存：8GB+（推荐16GB+，用于处理大数据文件）
   - 存储：若要存储全部数据，至少100GB可用空间；若仅验证测试数据，仅需10GB空间
@@ -160,26 +140,6 @@ SatelliteQPSK/
   - ✅ 完整帧处理支持，保留同步字和冗余数据
 - **技术亮点**：24个独立功能模块，算法参数可精确控制
 - **实现目录**：`student_cases/14+2022210532+chengzirui/`
-
-### 🟡 路径二：MATLAB+Simulink混合架构（汪曈熙方案）
-- **技术特点**：系统级可视化建模，工程化程度高
-- **适合对象**：注重系统工程思维的学生
-- **核心优势**：
-  - ✅ Simulink可视化信号流程建模
-  - ✅ 集成CCSDS LDPC解码器标准模块
-  - ✅ 实时监控和参数调试界面
-- **技术亮点**：符合工业界建模习惯，模块替换灵活
-- **实现目录**：`student_cases/2022211110-2022210391-wangtongxi/`
-
-### 🟢 路径三：向量化优化实现（汪宇翔方案）
-- **技术特点**：高效数据处理，性能优化导向
-- **适合对象**：关注算法性能和计算效率的学生
-- **核心优势**：
-  - ✅ bsxfun构造滑动窗口矩阵，高效同步字检测
-  - ✅ 向量化批量帧提取，内存效率优化
-  - ✅ 智能相位检测，自动处理I/Q路问题
-- **技术亮点**：矩阵批处理优势，适合大数据量处理
-- **实现目录**：`student_cases/2022211110-2022210394-wangyuxiang/`
 
 ## 🚀 快速开始
 
@@ -202,59 +162,6 @@ run('student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m');
 % - out/Ibytes.txt, Qbytes.txt: I/Q路分离数据
 ```
 
-### 🟡 路径二运行步骤
-```matlab
-% 1. 数据预处理 - 运行workspaceLoader_int16.m
-% 配置参数：
-oriFs = 500e6;          % 原始采样率 500MHz
-rs = 75e6;              % 符号速率 75MHz
-r = 3;                  % 上采样倍数
-offset = 4000000;       % 跳过前4M字节
-% 快速测试可使用：filename = 'data/small_sample_256k.bin'; 替代默认数据文件
-
-run('student_cases/2022211110-2022210391-wangtongxi/workspaceLoader_int16.m');
-
-% 2. 启动Simulink解调模型
-open_system('student_cases/2022211110-2022210391-wangtongxi/qpskrx.slx');
-sim('qpskrx');
-
-% 3. 帧同步处理
-run('student_cases/2022211110-2022210391-wangtongxi/frameLocate.m');
-
-% 4. 数据解析和AOS帧头提取
-run('student_cases/2022211110-2022210391-wangtongxi/frameProcess.m');
-
-% 5. 查看AOS帧头解析结果
-% 系统会自动显示解析的卫星ID、帧计数等信息
-```
-
-### 🟢 路径三运行步骤
-```matlab
-% 1. 数据读取和预处理 - 运行A_read_data.m
-% 配置参数：
-filename = 'data/sample_0611_500MHz_middle.bin';  
-N = 1e6;                % 读取100万个采样点
-fs = 500e6;             % 采样率 500MHz
-T = 10;                 % 从第10秒开始读取
-Ts = 1/fs;              % 采样时间间隔
-% 快速测试可将filename修改为：'data/small_sample_256k.bin'
-
-run('student_cases/2022211110-2022210394-wangyuxiang/A_read_data.m');
-
-% 2. Simulink信号处理 - 运行sar_simulink.slx
-% 完成：频偏校正 → 6倍上采样 → 低通滤波 → 5倍下采样 → 符号同步 → 载波同步
-open_system('student_cases/2022211110-2022210394-wangyuxiang/sar_simulink.slx');
-sim('sar_simulink');
-
-% 3. 解调分析和帧处理 - 运行B_data_analyze.m
-% 执行：QPSK判决 → 相位纠正 → 同步字检测 → 帧提取 → 解扰 → LDPC解码 → AOS帧头解析
-run('student_cases/2022211110-2022210394-wangyuxiang/B_data_analyze.m');
-
-% 4. 查看解调结果
-% I路和Q路的AOS帧头信息会自动显示在命令窗口
-% 包括：版本号、卫星ID(40)、帧计数器等字段信息
-```
-
 ## 🎓 教学价值
 
 ### 🎯 学习目标
@@ -271,13 +178,11 @@ run('student_cases/2022211110-2022210394-wangyuxiang/B_data_analyze.m');
 - **MATLAB程序设计**（高级编程实践）
 
 ### 🏆 教学成果
-基于三组学生的实际验证结果：
+基于学生程梓睿的实际验证结果：
 
 | 学生案例 | 技术路径 | 主要收获 | 创新亮点 |
 |---------|---------|---------|---------|
 | 程梓睿 | 纯MATLAB实现 | 算法原理深度理解 | Farrow插值器优化 |
-| 汪曈熙 | 混合架构实现 | 系统工程思维培养 | 标准模块集成应用 |
-| 汪宇翔 | 向量化优化实现 | 性能优化思维训练 | 高效矩阵运算 |
 
 ## ✅ 验证结果
 
@@ -326,8 +231,6 @@ Frame Count: 514315 (连续递增✅)
 
 ### 👨‍🎓 学生贡献
 - **程梓睿**：纯MATLAB路径，Farrow插值器优化创新
-- **汪曈熙**：混合架构路径，系统级建模实践
-- **汪宇翔**：向量化优化路径，高效算法实现
 
 ## 📄 开源协议
 
@@ -339,10 +242,10 @@ Frame Count: 514315 (连续递增✅)
 
 ## 🌟 项目亮点
 
-- 📊 **实践验证**：三组学生成功实现，教学效果显著
+- 📊 **实践验证**：多位学生成功实现，教学效果显著
 - 🛰️ **真实数据**：53.7GB SAR卫星数据，工程级挑战
 - 📚 **文档完善**：教程+学术论文+技术报告的完整体系
-- 🔧 **技术先进**：Farrow插值器、向量化优化等创新实现
+- 🔧 **技术先进**：Farrow插值器等创新实现
 
 ---
 **📧 联系方式**  
