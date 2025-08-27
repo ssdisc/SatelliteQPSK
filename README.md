@@ -49,7 +49,6 @@
 SatelliteQPSK/
 ├── 📄 README.md                        # 项目说明文档
 ├── 📄 LICENSE                          # 开源协议
-├── 📄 CLAUDE.md                        # 项目配置文件
 ├── 📂 docs/                            # 📚 完整文档体系
 │   ├── 📖 TUTORIAL.md                  # 详细教程
 │   ├── 📝 基于真实卫星数据的QPSK接收机教学案例设计与实现（初稿）.md
