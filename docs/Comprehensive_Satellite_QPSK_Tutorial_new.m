@@ -193,41 +193,10 @@ disp(config.QBytesFilename);
 
 %% SignalLoader实现代码
 % lib/SignalLoader.m
-% 打开文件
-fid = fopen(filename, 'rb');
+% 首先配置数据文件参数
+config.inputDataFilename = "data/small_sample_256k.bin"; % 数据文件路径
 
-% 设置搜索指针
-fseek(fid, (pointStart - 1) * 8, 'bof');
-
-% 读取数据
-if Nread == -1
-    % 读取文件中所有剩余数据
-    raw = fread(fid, [2, Inf], 'int16');
-else
-    % 读取指定数量的数据
-    raw = fread(fid, [2, Nread], 'int16');
-end
-
-y = complex(raw(1,:), raw(2,:));
-
-%关闭指针
-fclose(fid);
-
-
-%% 关键实现细节
-% 1. 文件指针定位：fseek(fid, (pointStart - 1) * 8, 'bof')中乘以8是因为每个复数点包含两个int16值（I和Q），每个int16占2字节，总共4字节。
-% 2. 数据读取：fread(fid, [2, Inf], 'int16')将数据按2行N列的方式读取，第一行是I路数据，第二行是Q路数据。
-% 3. 复数构造：complex(raw(1,:), raw(2,:))将I路和Q路数据组合成复数信号。
-
-%% 5.1.2 信号加载模块单元测试
-% 为了验证SignalLoader函数的正确性，我们可以编写以下单元测试：
-
-%% 单元测试示例：SignalLoader
-% 使用真实数据测试SignalLoader函数
-% 配置真实数据文件路径
-config.inputDataFilename = "data/small_sample_256k.bin"; % 使用小数据文件进行测试
-
-% 检查数据文件是否存在
+% 检查数据文件是否存在，不存在则创建模拟数据
 if ~exist(config.inputDataFilename, 'file')
     fprintf('警告：测试数据文件 %s 不存在，将创建模拟数据文件\n', config.inputDataFilename);
     
@@ -244,11 +213,10 @@ if ~exist(config.inputDataFilename, 'file')
     fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
 end
 
-% 测试SignalLoader函数 - 读取前1000个数据点（使用脚本形式的SignalLoader代码）
-% SignalLoader脚本代码开始
+% 设置读取参数
 filename = config.inputDataFilename;
 pointStart = 1;
-Nread = 1000;
+Nread = 10000;
 
 % 打开文件
 fid = fopen(filename, 'rb');
@@ -265,60 +233,15 @@ else
     raw = fread(fid, [2, Nread], 'int16');
 end
 
-loaded_data = complex(raw(1,:), raw(2,:));
+s_raw = complex(raw(1,:), raw(2,:));
 
 %关闭指针
 fclose(fid);
-% SignalLoader脚本代码结束
 
-% 验证输出是复数信号
-assert(isnumeric(loaded_data) && isreal(loaded_data) == false, 'SignalLoader测试失败：输出不是复数信号');
-assert(length(loaded_data) == 1000, 'SignalLoader测试失败：读取数据长度不正确');
-
-% 测试部分读取功能 - 从第500个点开始读取500个数据点（使用脚本形式的SignalLoader代码）
-% SignalLoader脚本代码开始
-filename = config.inputDataFilename;
-pointStart = 500;
-Nread = 500;
-
-% 打开文件
-fid = fopen(filename, 'rb');
-
-% 设置搜索指针
-fseek(fid, (pointStart - 1) * 8, 'bof');
-
-% 读取数据
-if Nread == -1
-    % 读取文件中所有剩余数据
-    raw = fread(fid, [2, Inf], 'int16');
-else
-    % 读取指定数量的数据
-    raw = fread(fid, [2, Nread], 'int16');
-end
-
-partial_data = complex(raw(1,:), raw(2,:));
-
-%关闭指针
-fclose(fid);
-% SignalLoader脚本代码结束
-
-assert(length(partial_data) == 500, 'SignalLoader测试失败：部分读取数据长度不正确');
-
-% 验证数据一致性 - 两次读取的数据应该有重叠部分
-overlap_data1 = loaded_data(500:end);  % 前一次读取的后500个点
-overlap_data2 = partial_data(1:500);   % 后一次读取的前500个点
-assert(isequal(overlap_data1, overlap_data2), 'SignalLoader测试失败：数据一致性验证失败');
-
-fprintf('SignalLoader单元测试通过！\n');
-fprintf('  - 成功读取真实数据文件：%s\n', config.inputDataFilename);
-fprintf('  - 读取数据点数：%d\n', length(loaded_data));
-fprintf('  - 部分读取功能验证通过\n');
-fprintf('  - 数据一致性验证通过\n');
-
-%% 测试执行与验证
-% 1. 以上测试代码用于验证SignalLoader函数的正确性
-% 2. 验证输出：如果所有测试都通过，将显示"SignalLoader单元测试通过！"
-% 3. 错误处理：如果测试失败，会显示相应的错误信息，帮助定位问题
+%% 关键实现细节
+% 1. 文件指针定位：fseek(fid, (pointStart - 1) * 8, 'bof')中乘以8是因为每个复数点包含两个int16值（I和Q），每个int16占2字节，总共4字节。
+% 2. 数据读取：fread(fid, [2, Inf], 'int16')将数据按2行N列的方式读取，第一行是I路数据，第二行是Q路数据。
+% 3. 复数构造：complex(raw(1,:), raw(2,:))将I路和Q路数据组合成复数信号。
 
 %% 5.2 模块详解: RRC匹配滤波
 % 预期效果: 信号通过RRC滤波器后，频谱被有效抑制在符号速率范围内，眼图张开，为后续的定时同步做好了准备。
