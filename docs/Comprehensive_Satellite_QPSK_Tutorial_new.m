@@ -345,37 +345,35 @@ end
 % 为了验证RRCFilterFixedLen函数的正确性，我们可以编写以下单元测试：
 
 %% 单元测试示例：RRCFilterFixedLen
-function test_RRCFilterFixedLen()
-    % 创建测试信号
-    t = 0:0.01:10;
-    test_signal = cos(2*pi*5*t) + 0.5*sin(2*pi*10*t);  % 合成信号
-    
-    % 测试参数
-    fb = 100;  % 符号率
-    fs = 1000; % 采样率
-    alpha = 0.33; % 滚降系数
-    
-    % 应用RRC滤波器
-    filtered_signal_rrc = RRCFilterFixedLen(fb, fs, test_signal, alpha, 'rrc');
-    filtered_signal_rc = RRCFilterFixedLen(fb, fs, test_signal, alpha, 'rc');
-    
-    % 验证输出长度与输入长度一致
-    assert(length(filtered_signal_rrc) == length(test_signal), 'RRC滤波器长度不匹配');
-    assert(length(filtered_signal_rc) == length(test_signal), 'RC滤波器长度不匹配');
-    
-    % 验证滤波器系数生成
-    span = 8;
-    sps = floor(fs / fb);
-    h_rrc = rcosdesign(alpha, span, sps, 'sqrt');
-    h_rc = rcosdesign(alpha, span, sps, 'normal');
-    
-    % 验证滤波器系数长度
-    expected_length = span * sps + 1;
-    assert(length(h_rrc) == expected_length, 'RRC滤波器系数长度错误');
-    assert(length(h_rc) == expected_length, 'RC滤波器系数长度错误');
-    
-    fprintf('RRCFilterFixedLen单元测试通过！\n');
-end
+% 创建测试信号
+t = 0:0.01:10;
+test_signal = cos(2*pi*5*t) + 0.5*sin(2*pi*10*t);  % 合成信号
+
+% 测试参数
+fb = 100;  % 符号率
+fs = 1000; % 采样率
+alpha = 0.33; % 滚降系数
+
+% 应用RRC滤波器
+filtered_signal_rrc = RRCFilterFixedLen(fb, fs, test_signal, alpha, 'rrc');
+filtered_signal_rc = RRCFilterFixedLen(fb, fs, test_signal, alpha, 'rc');
+
+% 验证输出长度与输入长度一致
+assert(length(filtered_signal_rrc) == length(test_signal), 'RRC滤波器长度不匹配');
+assert(length(filtered_signal_rc) == length(test_signal), 'RC滤波器长度不匹配');
+
+% 验证滤波器系数生成
+span = 8;
+sps = floor(fs / fb);
+h_rrc = rcosdesign(alpha, span, sps, 'sqrt');
+h_rc = rcosdesign(alpha, span, sps, 'normal');
+
+% 验证滤波器系数长度
+expected_length = span * sps + 1;
+assert(length(h_rrc) == expected_length, 'RRC滤波器系数长度错误');
+assert(length(h_rc) == expected_length, 'RC滤波器系数长度错误');
+
+fprintf('RRCFilterFixedLen单元测试通过！\n');
 
 %% 测试执行与验证
 % 1. 运行测试函数：在MATLAB命令窗口执行 test_RRCFilterFixedLen()
@@ -599,67 +597,65 @@ end
 % 为了验证GardnerSymbolSync函数的正确性，我们可以编写以下单元测试：
 
 %% 单元测试示例：GardnerSymbolSync
-function test_GardnerSymbolSync()
-    % 创建已知符号序列和采样偏移的测试信号
-    % 生成QPSK符号序列
-    symbols = [-1-1j, -1+1j, 1-1j, 1+1j];
-    data_length = 100;
-    data = symbols(randi(4, 1, data_length));
-    
-    % 过采样生成测试信号（每个符号4个采样点）
-    sps = 4;  % 每符号采样数
-    t = 0:1/(sps*data_length-1):1;
-    % 使用sinc插值生成过采样信号
-    signal = zeros(1, sps*data_length);
-    for i = 1:data_length
-        symbol_index = round((i-1)*sps + 1);
-        if symbol_index <= length(signal)
-            signal(symbol_index) = data(i);
-        end
+% 创建已知符号序列和采样偏移的测试信号
+% 生成QPSK符号序列
+symbols = [-1-1j, -1+1j, 1-1j, 1+1j];
+data_length = 100;
+data = symbols(randi(4, 1, data_length));
+
+% 过采样生成测试信号（每个符号4个采样点）
+sps = 4;  % 每符号采样数
+t = 0:1/(sps*data_length-1):1;
+% 使用sinc插值生成过采样信号
+signal = zeros(1, sps*data_length);
+for i = 1:data_length
+    symbol_index = round((i-1)*sps + 1);
+    if symbol_index <= length(signal)
+        signal(symbol_index) = data(i);
     end
-    
-    % 添加轻微的采样偏移（模拟实际场景）
-    signal_offset = [zeros(1, 2), signal(1:end-2)];  % 延迟2个采样点
-    
-    % 应用Gardner同步算法
-    B_loop = 0.0001;  % 归一化环路带宽
-    zeta = 0.707;     % 阻尼系数
-    
-    % 测试函数调用
-    try
-        sync_output = GardnerSymbolSync(signal_offset, sps, B_loop, zeta);
-        fprintf('GardnerSymbolSync函数调用成功\n');
-    catch ME
-        fprintf('GardnerSymbolSync函数调用失败: %s\n', ME.message);
-        return;
-    end
-    
-    % 验证输出长度（应该比输入符号数少一些，因为有边界处理）
-    expected_min_length = data_length - 10;  % 允许一定的边界损失
-    if length(sync_output) >= expected_min_length
-        fprintf('输出长度验证通过\n');
-    else
-        fprintf('输出长度验证失败: 期望至少%d，实际%d\n', expected_min_length, length(sync_output));
-    end
-    
-    % 验证输出是复数信号
-    if isnumeric(sync_output) && isreal(sync_output) == false
-        fprintf('输出类型验证通过\n');
-    else
-        fprintf('输出类型验证失败\n');
-    end
-    
-    % 验证Farrow插值器函数
-    test_vector = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    interpolated_value = FarrowCubicInterpolator(5, test_vector, 0.5);
-    if isnumeric(interpolated_value) && ~isnan(interpolated_value)
-        fprintf('Farrow插值器验证通过\n');
-    else
-        fprintf('Farrow插值器验证失败\n');
-    end
-    
-    fprintf('GardnerSymbolSync单元测试完成！\n');
 end
+
+% 添加轻微的采样偏移（模拟实际场景）
+signal_offset = [zeros(1, 2), signal(1:end-2)];  % 延迟2个采样点
+
+% 应用Gardner同步算法
+B_loop = 0.0001;  % 归一化环路带宽
+zeta = 0.707;     % 阻尼系数
+
+% 测试函数调用
+try
+    sync_output = GardnerSymbolSync(signal_offset, sps, B_loop, zeta);
+    fprintf('GardnerSymbolSync函数调用成功\n');
+catch ME
+    fprintf('GardnerSymbolSync函数调用失败: %s\n', ME.message);
+    return;
+end
+
+% 验证输出长度（应该比输入符号数少一些，因为有边界处理）
+expected_min_length = data_length - 10;  % 允许一定的边界损失
+if length(sync_output) >= expected_min_length
+    fprintf('输出长度验证通过\n');
+else
+    fprintf('输出长度验证失败: 期望至少%d，实际%d\n', expected_min_length, length(sync_output));
+end
+
+% 验证输出是复数信号
+if isnumeric(sync_output) && isreal(sync_output) == false
+    fprintf('输出类型验证通过\n');
+else
+    fprintf('输出类型验证失败\n');
+end
+
+% 验证Farrow插值器函数
+test_vector = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+interpolated_value = FarrowCubicInterpolator(5, test_vector, 0.5);
+if isnumeric(interpolated_value) && ~isnan(interpolated_value)
+    fprintf('Farrow插值器验证通过\n');
+else
+    fprintf('Farrow插值器验证失败\n');
+end
+
+fprintf('GardnerSymbolSync单元测试完成！\n');
 
 %% 测试执行与验证
 % 1. 运行测试函数：在MATLAB命令窗口执行 test_GardnerSymbolSync()
@@ -773,61 +769,59 @@ end
 % 为了验证QPSKFrequencyCorrectPLL函数的正确性，我们可以编写以下单元测试：
 
 %% 单元测试示例：QPSKFrequencyCorrectPLL
-function test_QPSKFrequencyCorrectPLL()
-    % 创建带有频率偏移和相位偏移的QPSK信号
-    symbols = [-1-1j, -1+1j, 1-1j, 1+1j];  % QPSK星座点
-    data_length = 1000;
-    data = symbols(randi(4, 1, data_length));     % 随机QPSK符号
-    
-    % 添加频率偏移和相位偏移
-    t = 0:length(data)-1;
-    freq_offset = 0.01;  % 归一化频率偏移
-    phase_offset = pi/6; % 相位偏移
-    fs = 1;              % 归一化采样率
-    offset_signal = data .* exp(1j*(2*pi*freq_offset*t + phase_offset));
-    
-    % PLL参数
-    fc = 0;     % 预估频偏
-    ki = 0.001; % 积分增益
-    kp = 0.01;  % 比例增益
-    
-    % 应用载波同步
-    [sync_signal, error_signal] = QPSKFrequencyCorrectPLL(offset_signal, fc, fs, ki, kp);
-    
-    % 验证输出信号长度
-    assert(length(sync_signal) == length(offset_signal), '输出信号长度不匹配');
-    assert(length(error_signal) == length(offset_signal), '误差信号长度不匹配');
-    
-    % 验证输出是复数信号
-    assert(isnumeric(sync_signal) && isreal(sync_signal) == false, '输出信号类型错误');
-    assert(isnumeric(error_signal) && isreal(error_signal) == true, '误差信号类型错误');
-    
-    % 验证误差信号收敛（最后100个点的均值应该接近0）
-    if length(error_signal) > 100
-        final_error_mean = mean(abs(error_signal(end-99:end)));
-        if final_error_mean < 0.1
-            fprintf('相位误差收敛验证通过\n');
-        else
-            fprintf('相位误差收敛验证警告：最终误差均值=%.4f\n', final_error_mean);
-        end
-    end
-    
-    % 验证星座点聚集（计算星座点到理想位置的距离）
-    % 硬判决恢复信号
-    recovered_symbols = 2*(real(sync_signal) > 0)-1 + (2*(imag(sync_signal) > 0)-1) * 1j;
-    
-    % 计算误差（理想星座点与恢复星座点的距离）
-    error_distance = abs(recovered_symbols - data(1:length(recovered_symbols)));
-    avg_error_distance = mean(error_distance);
-    
-    if avg_error_distance < 0.5
-        fprintf('星座点聚集验证通过\n');
+% 创建带有频率偏移和相位偏移的QPSK信号
+symbols = [-1-1j, -1+1j, 1-1j, 1+1j];  % QPSK星座点
+data_length = 1000;
+data = symbols(randi(4, 1, data_length));     % 随机QPSK符号
+
+% 添加频率偏移和相位偏移
+t = 0:length(data)-1;
+freq_offset = 0.01;  % 归一化频率偏移
+phase_offset = pi/6; % 相位偏移
+fs = 1;              % 归一化采样率
+offset_signal = data .* exp(1j*(2*pi*freq_offset*t + phase_offset));
+
+% PLL参数
+fc = 0;     % 预估频偏
+ki = 0.001; % 积分增益
+kp = 0.01;  % 比例增益
+
+% 应用载波同步
+[sync_signal, error_signal] = QPSKFrequencyCorrectPLL(offset_signal, fc, fs, ki, kp);
+
+% 验证输出信号长度
+assert(length(sync_signal) == length(offset_signal), '输出信号长度不匹配');
+assert(length(error_signal) == length(offset_signal), '误差信号长度不匹配');
+
+% 验证输出是复数信号
+assert(isnumeric(sync_signal) && isreal(sync_signal) == false, '输出信号类型错误');
+assert(isnumeric(error_signal) && isreal(error_signal) == true, '误差信号类型错误');
+
+% 验证误差信号收敛（最后100个点的均值应该接近0）
+if length(error_signal) > 100
+    final_error_mean = mean(abs(error_signal(end-99:end)));
+    if final_error_mean < 0.1
+        fprintf('相位误差收敛验证通过\n');
     else
-        fprintf('星座点聚集验证警告：平均误差距离=%.4f\n', avg_error_distance);
+        fprintf('相位误差收敛验证警告：最终误差均值=%.4f\n', final_error_mean);
     end
-    
-    fprintf('QPSKFrequencyCorrectPLL单元测试完成！\n');
 end
+
+% 验证星座点聚集（计算星座点到理想位置的距离）
+% 硬判决恢复信号
+recovered_symbols = 2*(real(sync_signal) > 0)-1 + (2*(imag(sync_signal) > 0)-1) * 1j;
+
+% 计算误差（理想星座点与恢复星座点的距离）
+error_distance = abs(recovered_symbols - data(1:length(recovered_symbols)));
+avg_error_distance = mean(error_distance);
+
+if avg_error_distance < 0.5
+    fprintf('星座点聚集验证通过\n');
+else
+    fprintf('星座点聚集验证警告：平均误差距离=%.4f\n', avg_error_distance);
+end
+
+fprintf('QPSKFrequencyCorrectPLL单元测试完成！\n');
 
 %% 测试执行与验证
 % 1. 运行测试函数：在MATLAB命令窗口执行 test_QPSKFrequencyCorrectPLL()
@@ -931,49 +925,47 @@ end
 % 为了验证FrameSync函数的正确性，我们可以编写以下单元测试：
 
 %% 单元测试示例：FrameSync
-function test_FrameSync()
-    % 创建测试数据：包含已知同步字的QPSK符号流
-    % 生成QPSK符号序列
-    symbols = [-1-1j, -1+1j, 1-1j, 1+1j];  % QPSK星座点
-    data_length = 1000;
-    data = symbols(randi(4, 1, data_length));     % 随机QPSK符号
-    
-    % 插入已知的同步字（1ACFFC1D）
-    sync_word = [-1+1j, -1-1j, 1+1j, -1+1j, 1-1j, 1+1j, -1-1j, 1+1j, ...
-                 -1+1j, -1-1j, 1+1j, -1+1j, 1-1j, 1+1j, -1-1j, 1+1j, ...
-                 1-1j, -1+1j, -1-1j, 1-1j, 1+1j, -1-1j, -1+1j, -1-1j, ...
-                 1+1j, -1+1j, 1-1j, 1+1j, -1-1j, 1+1j, 1-1j, -1+1j];  % 1ACFFC1D对应的QPSK符号
-    
-    % 构造测试信号：在随机数据中插入同步字
-    test_signal = [data(1:100), sync_word, data(101:end-32), sync_word, data(end-31:end)];
-    
-    % 添加相位模糊（旋转90度）
-    test_signal_rotated = test_signal * 1i;
-    
-    % 由于FrameSync函数依赖其他辅助函数，我们主要测试其逻辑结构
-    fprintf('FrameSync函数结构验证:\n');
-    fprintf('1. 输入参数检查: 函数接受复数符号流作为输入\n');
-    fprintf('2. 相位穷举检查: 函数会对输入信号进行4次90度旋转处理\n');
-    fprintf('3. 同步字匹配检查: 函数会与预定义的1ACFFC1D同步字进行比较\n');
-    fprintf('4. 帧提取检查: 函数会提取匹配位置的完整帧数据\n');
-    fprintf('5. 输出格式检查: 函数返回同步后的帧数据\n');
-    
-    % 验证辅助函数SymbolToIdeaSymbol的存在性
-    if exist('SymbolToIdeaSymbol', 'file') == 2
-        fprintf('辅助函数SymbolToIdeaSymbol存在验证通过\n');
-    else
-        fprintf('辅助函数SymbolToIdeaSymbol存在验证失败\n');
-    end
-    
-    % 验证辅助函数ByteArrayToBinarySourceArray的存在性
-    if exist('ByteArrayToBinarySourceArray', 'file') == 2
-        fprintf('辅助函数ByteArrayToBinarySourceArray存在验证通过\n');
-    else
-        fprintf('辅助函数ByteArrayToBinarySourceArray存在验证失败\n');
-    end
-    
-    fprintf('FrameSync单元测试完成！\n');
+% 创建测试数据：包含已知同步字的QPSK符号流
+% 生成QPSK符号序列
+symbols = [-1-1j, -1+1j, 1-1j, 1+1j];  % QPSK星座点
+data_length = 1000;
+data = symbols(randi(4, 1, data_length));     % 随机QPSK符号
+
+% 插入已知的同步字（1ACFFC1D）
+sync_word = [-1+1j, -1-1j, 1+1j, -1+1j, 1-1j, 1+1j, -1-1j, 1+1j, ...
+             -1+1j, -1-1j, 1+1j, -1+1j, 1-1j, 1+1j, -1-1j, 1+1j, ...
+             1-1j, -1+1j, -1-1j, 1-1j, 1+1j, -1-1j, -1+1j, -1-1j, ...
+             1+1j, -1+1j, 1-1j, 1+1j, -1-1j, 1+1j, 1-1j, -1+1j];  % 1ACFFC1D对应的QPSK符号
+
+% 构造测试信号：在随机数据中插入同步字
+test_signal = [data(1:100), sync_word, data(101:end-32), sync_word, data(end-31:end)];
+
+% 添加相位模糊（旋转90度）
+test_signal_rotated = test_signal * 1i;
+
+% 由于FrameSync函数依赖其他辅助函数，我们主要测试其逻辑结构
+fprintf('FrameSync函数结构验证:\n');
+fprintf('1. 输入参数检查: 函数接受复数符号流作为输入\n');
+fprintf('2. 相位穷举检查: 函数会对输入信号进行4次90度旋转处理\n');
+fprintf('3. 同步字匹配检查: 函数会与预定义的1ACFFC1D同步字进行比较\n');
+fprintf('4. 帧提取检查: 函数会提取匹配位置的完整帧数据\n');
+fprintf('5. 输出格式检查: 函数返回同步后的帧数据\n');
+
+% 验证辅助函数SymbolToIdeaSymbol的存在性
+if exist('SymbolToIdeaSymbol', 'file') == 2
+    fprintf('辅助函数SymbolToIdeaSymbol存在验证通过\n');
+else
+    fprintf('辅助函数SymbolToIdeaSymbol存在验证失败\n');
 end
+
+% 验证辅助函数ByteArrayToBinarySourceArray的存在性
+if exist('ByteArrayToBinarySourceArray', 'file') == 2
+    fprintf('辅助函数ByteArrayToBinarySourceArray存在验证通过\n');
+else
+    fprintf('辅助函数ByteArrayToBinarySourceArray存在验证失败\n');
+end
+
+fprintf('FrameSync单元测试完成！\n');
 
 %% 5.5.3 解扰模块原理解析
 % 功能：根据CCSDS标准，使用1+X^14+X^15多项式，对已同步的帧数据进行解扰，
@@ -1098,60 +1090,58 @@ end
 % 为了验证解扰模块的正确性，我们可以编写以下单元测试：
 
 %% 单元测试示例：解扰模块
-function test_FrameScramblingModule()
-    % 创建测试帧数据
-    frame_length = 8160;  % 帧长度（不含同步字）
-    test_I_bits = randi([0, 1], 1, frame_length);
-    test_Q_bits = randi([0, 1], 1, frame_length);
-    
-    % 模拟同步后的符号数据（包含同步字和数据）
-    sync_word_length = 32;
-    total_length = sync_word_length + frame_length;
-    test_symbols = complex([ones(1, sync_word_length), test_I_bits], ...
-                          [ones(1, sync_word_length), test_Q_bits]);
-    
-    % 设置帧尾验证位为00
-    test_symbols(end-1) = 0;
-    test_symbols(end) = 0;
-    
-    % 验证函数存在性
-    if exist('FrameScramblingModule', 'file') == 2
-        fprintf('FrameScramblingModule函数存在验证通过\n');
-    else
-        fprintf('FrameScramblingModule函数存在验证失败\n');
-        return;
-    end
-    
-    if exist('ScramblingModule', 'file') == 2
-        fprintf('ScramblingModule函数存在验证通过\n');
-    else
-        fprintf('ScramblingModule函数存在验证失败\n');
-        return;
-    end
-    
-    % 测试ScramblingModule函数
-    test_data = [1 0 1 1 0 0 1 0 1 1 1 0 0 1 0 1];
-    initial_phase = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1];
-    
-    % 执行加扰
-    scrambled_result = ScramblingModule(test_data, initial_phase);
-    
-    % 验证输出长度
-    if length(scrambled_result) == length(test_data)
-        fprintf('ScramblingModule输出长度验证通过\n');
-    else
-        fprintf('ScramblingModule输出长度验证失败\n');
-    end
-    
-    % 验证输出为二进制数据
-    if all(ismember(scrambled_result, [0 1]))
-        fprintf('ScramblingModule输出格式验证通过\n');
-    else
-        fprintf('ScramblingModule输出格式验证失败\n');
-    end
-    
-    fprintf('解扰模块单元测试完成！\n');
+% 创建测试帧数据
+frame_length = 8160;  % 帧长度（不含同步字）
+test_I_bits = randi([0, 1], 1, frame_length);
+test_Q_bits = randi([0, 1], 1, frame_length);
+
+% 模拟同步后的符号数据（包含同步字和数据）
+sync_word_length = 32;
+total_length = sync_word_length + frame_length;
+test_symbols = complex([ones(1, sync_word_length), test_I_bits], ...
+                      [ones(1, sync_word_length), test_Q_bits]);
+
+% 设置帧尾验证位为00
+test_symbols(end-1) = 0;
+test_symbols(end) = 0;
+
+% 验证函数存在性
+if exist('FrameScramblingModule', 'file') == 2
+    fprintf('FrameScramblingModule函数存在验证通过\n');
+else
+    fprintf('FrameScramblingModule函数存在验证失败\n');
+    return;
 end
+
+if exist('ScramblingModule', 'file') == 2
+    fprintf('ScramblingModule函数存在验证通过\n');
+else
+    fprintf('ScramblingModule函数存在验证失败\n');
+    return;
+end
+
+% 测试ScramblingModule函数
+test_data = [1 0 1 1 0 0 1 0 1 1 1 0 0 1 0 1];
+initial_phase = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1];
+
+% 执行加扰
+scrambled_result = ScramblingModule(test_data, initial_phase);
+
+% 验证输出长度
+if length(scrambled_result) == length(test_data)
+    fprintf('ScramblingModule输出长度验证通过\n');
+else
+    fprintf('ScramblingModule输出长度验证失败\n');
+end
+
+% 验证输出为二进制数据
+if all(ismember(scrambled_result, [0 1]))
+    fprintf('ScramblingModule输出格式验证通过\n');
+else
+    fprintf('ScramblingModule输出格式验证失败\n');
+end
+
+fprintf('解扰模块单元测试完成！\n');
 
 %% 测试执行与验证
 % 1. 运行测试函数：在MATLAB命令窗口执行 test_FrameScramblingModule()
