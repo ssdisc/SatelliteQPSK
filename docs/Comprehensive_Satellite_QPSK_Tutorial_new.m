@@ -458,113 +458,112 @@ fprintf('RRCFilterFixedLen单元测试通过！\n');
 %% 代码实现详解
 % 在 lib/GardnerSymbolSync.m 中，核心逻辑在 for 循环内。
 
-% ```matlab
-% % lib/GardnerSymbolSync.m
-% function y_IQ_Array = GardnerSymbolSync(s_qpsk,sps,B_loop,zeta)
-% %% 参数配置
-% Wn = 2 * pi * B_loop / sps;  % 环路自然频率
-% 
-% % 环路滤波器(PI)系数
-% c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
-% c2 = (4 * Wn^2)      / (1 + 2 * zeta * Wn + Wn^2);
-% 
-% %% 初始化状态
-% ncoPhase = 0;                    % NCO相位累加器
-% wFilterLast = 1 / sps;           % 初始定时步进 (每个输入样本代表 1/sps 个符号)
-% 
-% % 算法状态变量
-% isStrobeSample = false;          % 状态标志: false->中点采样, true->判决点采样
-% timeErrLast = 0;                 % 上一次的定时误差
-% wFilter = wFilterLast;           % 环路滤波器输出
-% 
-% % 数据存储
-% y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
-% mid_I = 0; mid_Q = 0;             % 中点采样值
-% y_I_Array = []; y_Q_Array = [];  % 输出数组
-% 
-% %% Gardner 同步主循环
-% for m = 6 : length(s_qpsk)-3
-%     % NCO相位累加 (每个输入样本前进 wFilterLast 的相位)
-%     % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
-%     ncoPhase_old = ncoPhase;
-%     ncoPhase = ncoPhase + wFilterLast;
-% 
-%     % 使用 while 循环处理
-%     while ncoPhase >= 0.5
-%         % --- 关键修复 1: 正确计算插值时刻 (mu) ---
-%         % 计算过冲点在当前采样区间的归一化位置
-%         mu = (0.5 - ncoPhase_old) / wFilterLast;
-%         base_idx = m - 1;
-% 
-%         % --- 使用Farrow 立方插值器 ---
-%         y_I_sample = FarrowCubicInterpolator(base_idx, real(s_qpsk), mu);
-%         y_Q_sample = FarrowCubicInterpolator(base_idx, imag(s_qpsk), mu);
-%         
-%         if isStrobeSample
-%             % === 当前是判决点 (Strobe Point) ===
-% 
-%             % --- Gardner 误差计算 ---
-%             % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
-%             timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
-% 
-%             % 环路滤波器
-%             wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
-% 
-%             % 存储状态用于下次计算
-%             timeErrLast = timeErr;
-%             y_last_I = y_I_sample;
-%             y_last_Q = y_Q_sample;
-% 
-%             % 将判决点采样存入结果数组
-%             y_I_Array(end+1) = y_I_sample;
-%             y_Q_Array(end+1) = y_Q_sample;
-% 
-%         else
-%             % === 当前是中点 (Midpoint) ===
-%             % 存储中点采样值，用于下一次的误差计算
-%             mid_I = y_I_sample;
-%             mid_Q = y_Q_sample;
-%         end
-% 
-%         % 更新环路滤波器输出 (每个判决点更新一次)
-%         if isStrobeSample
-%             wFilterLast = wFilter;
-%         end
-% 
-%         % 切换状态: 判决点 -> 中点, 中点 -> 判决点
-%         isStrobeSample = ~isStrobeSample;
-%         
-%         % NCO相位减去已处理的0.5个符号周期，并为下一次可能的触发更新"旧"相位
-%         ncoPhase_old = 0.5; 
-%         ncoPhase = ncoPhase - 0.5;
-%     end
-% end
-% 
-% %% 输出复数结果
-% y_IQ_Array = y_I_Array + 1j * y_Q_Array;
-% 
-% end
-% 
-% function y = FarrowCubicInterpolator(index, x, u)
-%     % Farrow 结构三阶(Cubic)插值器
-%     % 使用 index-1, index, index+1, index+2 四个点估计 x(index+u)
-%     if index < 2 || index > length(x) - 2
-%         y = 0; return;
-%     end
-%     x_m1 = x(index - 1);
-%     x_0  = x(index);
-%     x_p1 = x(index + 1);
-%     x_p2 = x(index + 2);
-%     
-%     % Farrow 结构系数
-%     c0 = x_0;
-%     c1 = 0.5 * (x_p1 - x_m1);
-%     c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
-%     c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
-%     
-%     y = ((c3 * u + c2) * u + c1) * u + c0;
-% end
-% ```
+%% Gardner定时同步实现代码
+% lib/GardnerSymbolSync.m
+function y_IQ_Array = GardnerSymbolSync(s_qpsk,sps,B_loop,zeta)
+%% 参数配置
+Wn = 2 * pi * B_loop / sps;  % 环路自然频率
+
+% 环路滤波器(PI)系数
+c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
+c2 = (4 * Wn^2)      / (1 + 2 * zeta * Wn + Wn^2);
+
+%% 初始化状态
+ncoPhase = 0;                    % NCO相位累加器
+wFilterLast = 1 / sps;           % 初始定时步进 (每个输入样本代表 1/sps 个符号)
+
+% 算法状态变量
+isStrobeSample = false;          % 状态标志: false->中点采样, true->判决点采样
+timeErrLast = 0;                 % 上一次的定时误差
+wFilter = wFilterLast;           % 环路滤波器输出
+
+% 数据存储
+y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
+mid_I = 0; mid_Q = 0;             % 中点采样值
+y_I_Array = []; y_Q_Array = [];  % 输出数组
+
+%% Gardner 同步主循环
+for m = 6 : length(s_qpsk)-3
+    % NCO相位累加 (每个输入样本前进 wFilterLast 的相位)
+    % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
+    ncoPhase_old = ncoPhase;
+    ncoPhase = ncoPhase + wFilterLast;
+
+    % 使用 while 循环处理
+    while ncoPhase >= 0.5
+        % --- 关键修复 1: 正确计算插值时刻 (mu) ---
+        % 计算过冲点在当前采样区间的归一化位置
+        mu = (0.5 - ncoPhase_old) / wFilterLast;
+        base_idx = m - 1;
+
+        % --- 使用Farrow 立方插值器 ---
+        y_I_sample = FarrowCubicInterpolator(base_idx, real(s_qpsk), mu);
+        y_Q_sample = FarrowCubicInterpolator(base_idx, imag(s_qpsk), mu);
+        
+        if isStrobeSample
+            % === 当前是判决点 (Strobe Point) ===
+
+            % --- Gardner 误差计算 ---
+            % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
+            timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
+
+            % 环路滤波器
+            wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
+
+            % 存储状态用于下次计算
+            timeErrLast = timeErr;
+            y_last_I = y_I_sample;
+            y_last_Q = y_Q_sample;
+
+            % 将判决点采样存入结果数组
+            y_I_Array(end+1) = y_I_sample;
+            y_Q_Array(end+1) = y_Q_sample;
+
+        else
+            % === 当前是中点 (Midpoint) ===
+            % 存储中点采样值，用于下一次的误差计算
+            mid_I = y_I_sample;
+            mid_Q = y_Q_sample;
+        end
+
+        % 更新环路滤波器输出 (每个判决点更新一次)
+        if isStrobeSample
+            wFilterLast = wFilter;
+        end
+
+        % 切换状态: 判决点 -> 中点, 中点 -> 判决点
+        isStrobeSample = ~isStrobeSample;
+        
+        % NCO相位减去已处理的0.5个符号周期，并为下一次可能的触发更新"旧"相位
+        ncoPhase_old = 0.5; 
+        ncoPhase = ncoPhase - 0.5;
+    end
+end
+
+%% 输出复数结果
+y_IQ_Array = y_I_Array + 1j * y_Q_Array;
+
+end
+
+function y = FarrowCubicInterpolator(index, x, u)
+    % Farrow 结构三阶(Cubic)插值器
+    % 使用 index-1, index, index+1, index+2 四个点估计 x(index+u)
+    if index < 2 || index > length(x) - 2
+        y = 0; return;
+    end
+    x_m1 = x(index - 1);
+    x_0  = x(index);
+    x_p1 = x(index + 1);
+    x_p2 = x(index + 2);
+    
+    % Farrow 结构系数
+    c0 = x_0;
+    c1 = 0.5 * (x_p1 - x_m1);
+    c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+    c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+    
+    y = ((c3 * u + c2) * u + c1) * u + c0;
+end
 
 %% 关键实现细节
 % 1. NCO（数控振荡器）：通过ncoPhase累加器和wFilterLast步进控制采样时刻
@@ -711,41 +710,40 @@ fprintf('GardnerSymbolSync单元测试完成！\n');
 %% 代码实现详解
 % 在 lib/QPSKFrequencyCorrectPLL.m 中，实现了混合式PLL的核心逻辑。
 
-% ```matlab
-% % lib/QPSKFrequencyCorrectPLL.m
-% function [y,err] = QPSKFrequencyCorrectPLL(x,fc,fs,ki,kp)
-% %% 全局变量
-% theta = 0;
-% theta_integral = 0;
-% 
-% y = zeros(1,length(x));
-% err = zeros(1,length(x));
-% 
-% %% 主循环
-% for m=1:length(x)
-%    % 应用初始相位到x
-%    x(m) = x(m) * exp(-1j*(theta));
-%     
-%    % 判断最近星座点
-%    desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j;
-%    
-%    % 计算相位差
-%    angleErr = angle(x(m)*conj(desired_point));
-%    
-%    % 二阶环路滤波器
-%    theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
-%    theta_integral = theta_integral + angleErr;
-%    
-%    % 累积相位误差
-%    theta = theta + theta_delta + 2 * pi * fc / fs;
-%    
-%    % 输出当前频偏纠正信号
-%    y(m) = x(m);
-%    err(m) = angleErr;
-% end
-% 
-% end
-% ```
+%% 载波同步实现代码
+% lib/QPSKFrequencyCorrectPLL.m
+function [y,err] = QPSKFrequencyCorrectPLL(x,fc,fs,ki,kp)
+%% 全局变量
+theta = 0;
+theta_integral = 0;
+
+y = zeros(1,length(x));
+err = zeros(1,length(x));
+
+%% 主循环
+for m=1:length(x)
+   % 应用初始相位到x
+   x(m) = x(m) * exp(-1j*(theta));
+    
+   % 判断最近星座点
+   desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j;
+   
+   % 计算相位差
+   angleErr = angle(x(m)*conj(desired_point));
+   
+   % 二阶环路滤波器
+   theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
+   theta_integral = theta_integral + angleErr;
+   
+   % 累积相位误差
+   theta = theta + theta_delta + 2 * pi * fc / fs;
+   
+   % 输出当前频偏纠正信号
+   y(m) = x(m);
+   err(m) = angleErr;
+end
+
+end
 
 %% 关键实现细节
 % 1. 相位校正：x(m) = x(m) * exp(-1j*(theta)) 实现相位校正
@@ -859,59 +857,58 @@ fprintf('QPSKFrequencyCorrectPLL单元测试完成！\n');
 %% 代码实现详解
 % 在 lib/FrameSync.m 中，实现了相位模糊恢复和帧同步的一体化处理。
 
-% ```matlab
-% % lib/FrameSync.m
-% function sync_frame_bits = FrameSync(s_symbol)
-% %% 定义同步字
-% sync_bits_length = 32;
-% syncWord = uint8([0x1A,0xCF,0xFC,0x1D]);
-% syncWord_bits = ByteArrayToBinarySourceArray(syncWord,"reverse");
-% ref_bits_I = syncWord_bits;
-% ref_bits_Q = syncWord_bits;
-% 
-% %% 定义帧长度
-% frame_len = 8192;
-% sync_frame_bits = [];
-% sync_index_list = [];  % 用于记录同步成功的位置
-% 
-% %% 主循环：搜索帧同步位置
-% for m = 1 : length(s_symbol) - frame_len
-%     s_frame = s_symbol(1, m : m + frame_len - 1);  % 提取一个可能的帧
-% 
-%     % 处理相位模糊（旋转3次，每次90°）
-%     for n = 1 : 3
-%         s_frame = s_frame * (1i);  % 逆时针旋转90度
-%         
-%         % 提取前同步字部分
-%         s_sync_frame = s_frame(1 : sync_bits_length);
-%         s_sync_frame_bits = SymbolToIdeaSymbol(s_sync_frame);  % 解调为理想符号
-%         
-%         i_sync_frame_bits = real(s_sync_frame_bits);
-%         q_sync_frame_bits = imag(s_sync_frame_bits);
-%         
-%         % 检查同步字匹配
-%         if isequal(i_sync_frame_bits, ref_bits_I) && isequal(q_sync_frame_bits, ref_bits_Q)
-%             disp('序列匹配');
-%             disp(['编号 ', num2str(m)]);
-%             
-%             s_frame_bits = SymbolToIdeaSymbol(s_frame);  % 获取整帧
-%             sync_frame_bits = [sync_frame_bits; s_frame_bits];
-%             sync_index_list = [sync_index_list, m];      % 记录匹配位置
-%             break;
-%         end
-%     end
-% end
-% 
-% %% 绘图：帧同步时刻图
-% figure;
-% stem(sync_index_list, ones(size(sync_index_list)), 'filled');
-% xlabel('符号位置');
-% ylabel('同步触发');
-% title('帧同步检测位置');
-% grid on;
-% 
-% end
-% ```
+%% 帧同步实现代码
+% lib/FrameSync.m
+function sync_frame_bits = FrameSync(s_symbol)
+%% 定义同步字
+sync_bits_length = 32;
+syncWord = uint8([0x1A,0xCF,0xFC,0x1D]);
+syncWord_bits = ByteArrayToBinarySourceArray(syncWord,"reverse");
+ref_bits_I = syncWord_bits;
+ref_bits_Q = syncWord_bits;
+
+%% 定义帧长度
+frame_len = 8192;
+sync_frame_bits = [];
+sync_index_list = [];  % 用于记录同步成功的位置
+
+%% 主循环：搜索帧同步位置
+for m = 1 : length(s_symbol) - frame_len
+    s_frame = s_symbol(1, m : m + frame_len - 1);  % 提取一个可能的帧
+
+    % 处理相位模糊（旋转3次，每次90°）
+    for n = 1 : 3
+        s_frame = s_frame * (1i);  % 逆时针旋转90度
+        
+        % 提取前同步字部分
+        s_sync_frame = s_frame(1 : sync_bits_length);
+        s_sync_frame_bits = SymbolToIdeaSymbol(s_sync_frame);  % 解调为理想符号
+        
+        i_sync_frame_bits = real(s_sync_frame_bits);
+        q_sync_frame_bits = imag(s_sync_frame_bits);
+        
+        % 检查同步字匹配
+        if isequal(i_sync_frame_bits, ref_bits_I) && isequal(q_sync_frame_bits, ref_bits_Q)
+            disp('序列匹配');
+            disp(['编号 ', num2str(m)]);
+            
+            s_frame_bits = SymbolToIdeaSymbol(s_frame);  % 获取整帧
+            sync_frame_bits = [sync_frame_bits; s_frame_bits];
+            sync_index_list = [sync_index_list, m];      % 记录匹配位置
+            break;
+        end
+    end
+end
+
+%% 绘图：帧同步时刻图
+figure;
+stem(sync_index_list, ones(size(sync_index_list)), 'filled');
+xlabel('符号位置');
+ylabel('同步触发');
+title('帧同步检测位置');
+grid on;
+
+end
 
 %% 关键实现细节
 % 1. 相位穷举：通过 s_frame = s_frame * (1i) 实现90度旋转，穷举4种相位状态
@@ -997,85 +994,84 @@ fprintf('FrameSync单元测试完成！\n');
 %% 代码实现详解
 % 在 lib/FrameScramblingModule.m 和 lib/ScramblingModule.m 中，实现了完整的解扰功能。
 
-% ```matlab
-% % lib/FrameScramblingModule.m
-% function [I_array,Q_array] = FrameScramblingModule(s_symbols)
-% %% 获取x的形状
-% [rows,columns] = size(s_symbols);
-% x = zeros(rows,columns-32);
-% 
-% %% 定义保留矩阵
-% I_array = zeros(rows,columns-32);
-% Q_array = zeros(rows,columns-32);
-% 
-% %% 对x进行裁剪，过滤同步字
-% for m=1:rows
-%    x(m,:)=s_symbols(m,33:end); 
-% end
-% 
-% %% 定义I路和Q路的解扰器相位
-% InPhase_I = ones(1,15);
-% InPhase_Q = [ones(1,8),zeros(1,7)];
-% 
-% %% 获取I路和Q路
-% I_bits = real(x);
-% Q_bits = imag(x);
-% 
-% for m=1:rows
-%    I_row_bits = I_bits(m,:);
-%    Q_row_bits = Q_bits(m,:);
-%    
-%    % 尝试解扰，考虑IQ未反向
-%    I_deScrambling = ScramblingModule(I_row_bits,InPhase_I);
-%    Q_deScrambling = ScramblingModule(Q_row_bits,InPhase_Q);
-%    
-%    % 检查是否合法
-%    if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
-%        disp("序列合法");
-%        I_array(m,:) = I_deScrambling;
-%        Q_array(m,:) = Q_deScrambling;
-%    else
-%        % 假设未解扰成功
-%        % IQ两路交换，然后解扰
-%        I_deScrambling = ScramblingModule(I_row_bits,InPhase_Q);
-%        Q_deScrambling = ScramblingModule(Q_row_bits,InPhase_I);
-%        
-%        % 检查是否合法
-%        if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
-%            disp("合法，但翻转");
-%            I_array(m,:) = Q_deScrambling;
-%            Q_array(m,:) = I_deScrambling;
-%        else
-%            % 维持原样输出
-%            I_array(m,:) = I_deScrambling;
-%            Q_array(m,:) = Q_deScrambling;
-%            
-%            disp("误码率过高");
-%        end
-%    end
-% end
-% 
-% end
-% 
-% % lib/ScramblingModule.m
-% function scrambled_data = ScramblingModule(data,InPhase)
-% %% 定义加扰解扰逻辑
-% N = length(data);
-% scrambled_data = zeros(1,N);
-% for m=1:N
-%     scrambled_data(m) = bitxor(InPhase(15),data(m));
-%     scrambled_feedback = bitxor(InPhase(15),InPhase(14));
-%     
-%     % 更新模拟移位寄存器
-%     for n=0:13
-%        InPhase(15-n) = InPhase(14-n);
-%     end
-%     
-%     InPhase(1) = scrambled_feedback;
-% end
-% 
-% end
-% ```
+%% 解扰模块实现代码
+% lib/FrameScramblingModule.m
+function [I_array,Q_array] = FrameScramblingModule(s_symbols)
+%% 获取x的形状
+[rows,columns] = size(s_symbols);
+x = zeros(rows,columns-32);
+
+%% 定义保留矩阵
+I_array = zeros(rows,columns-32);
+Q_array = zeros(rows,columns-32);
+
+%% 对x进行裁剪，过滤同步字
+for m=1:rows
+   x(m,:)=s_symbols(m,33:end); 
+end
+
+%% 定义I路和Q路的解扰器相位
+InPhase_I = ones(1,15);
+InPhase_Q = [ones(1,8),zeros(1,7)];
+
+%% 获取I路和Q路
+I_bits = real(x);
+Q_bits = imag(x);
+
+for m=1:rows
+   I_row_bits = I_bits(m,:);
+   Q_row_bits = Q_bits(m,:);
+   
+   % 尝试解扰，考虑IQ未反向
+   I_deScrambling = ScramblingModule(I_row_bits,InPhase_I);
+   Q_deScrambling = ScramblingModule(Q_row_bits,InPhase_Q);
+   
+   % 检查是否合法
+   if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
+       disp("序列合法");
+       I_array(m,:) = I_deScrambling;
+       Q_array(m,:) = Q_deScrambling;
+   else
+       % 假设未解扰成功
+       % IQ两路交换，然后解扰
+       I_deScrambling = ScramblingModule(I_row_bits,InPhase_Q);
+       Q_deScrambling = ScramblingModule(Q_row_bits,InPhase_I);
+       
+       % 检查是否合法
+       if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
+           disp("合法，但翻转");
+           I_array(m,:) = Q_deScrambling;
+           Q_array(m,:) = I_deScrambling;
+       else
+           % 维持原样输出
+           I_array(m,:) = I_deScrambling;
+           Q_array(m,:) = Q_deScrambling;
+           
+           disp("误码率过高");
+       end
+   end
+end
+
+end
+
+% lib/ScramblingModule.m
+function scrambled_data = ScramblingModule(data,InPhase)
+%% 定义加扰解扰逻辑
+N = length(data);
+scrambled_data = zeros(1,N);
+for m=1:N
+    scrambled_data(m) = bitxor(InPhase(15),data(m));
+    scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+    
+    % 更新模拟移位寄存器
+    for n=0:13
+       InPhase(15-n) = InPhase(14-n);
+    end
+    
+    InPhase(1) = scrambled_feedback;
+end
+
+end
 
 %% 关键实现细节
 % 1. 同步字过滤：x(m,:)=s_symbols(m,33:end) 去除前32位同步字
