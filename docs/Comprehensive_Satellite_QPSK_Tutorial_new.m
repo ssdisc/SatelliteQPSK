@@ -1026,9 +1026,27 @@ else
     fprintf('定时同步效果验证警告：星座图扩散度未明显减小\n');
 end
 
-% 验证Farrow插值器函数
+% 验证Farrow插值器（内联实现）
 test_vector = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-interpolated_value = FarrowCubicInterpolator(5, test_vector, 0.5);
+index = 5;
+x = test_vector;
+u = 0.5;
+if index < 2 || index > length(x) - 2
+    interpolated_value = 0;
+else
+    x_m1 = x(index - 1);
+    x_0  = x(index);
+    x_p1 = x(index + 1);
+    x_p2 = x(index + 2);
+    
+    % Farrow 结构系数
+    c0 = x_0;
+    c1 = 0.5 * (x_p1 - x_m1);
+    c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+    c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+    
+    interpolated_value = ((c3 * u + c2) * u + c1) * u + c0;
+end
 if isnumeric(interpolated_value) && ~isnan(interpolated_value)
     fprintf('Farrow插值器验证通过\n');
 else
@@ -1543,6 +1561,9 @@ frame_len = 8192;
 sync_frame_bits = [];
 sync_index_list = [];  % 用于记录同步成功的位置
 
+% 设置FrameSync的输入信号（使用载波同步后的信号）
+s_symbol = sync_signal;
+
 %% 主循环：搜索帧同步位置
 for m = 1 : length(s_symbol) - frame_len
     s_frame = s_symbol(1, m : m + frame_len - 1);  % 提取一个可能的帧
@@ -1554,21 +1575,21 @@ for m = 1 : length(s_symbol) - frame_len
         % 提取前同步字部分
         s_sync_frame = s_frame(1 : sync_bits_length);
         % SymbolToIdeaSymbol内联实现
-        s_symbol = s_sync_frame;
+        input_symbols = s_sync_frame;
         %% 初始化理想符号数组
-        s_sync_frame_bits = zeros(1,length(s_symbol)) + 1j*zeros(1,length(s_symbol));
-        for m=1:length(s_symbol)
-            symbol_I = real(s_symbol(m));
-            symbol_Q = imag(s_symbol(m));
+        s_sync_frame_bits = zeros(1,length(input_symbols)) + 1j*zeros(1,length(input_symbols));
+        for idx=1:length(input_symbols)
+            symbol_I = real(input_symbols(idx));
+            symbol_Q = imag(input_symbols(idx));
             
             if symbol_I > 0 && symbol_Q > 0
-                s_sync_frame_bits(m) = 0 + 0j;
+                s_sync_frame_bits(idx) = 0 + 0j;
             elseif symbol_I < 0 && symbol_Q > 0
-                s_sync_frame_bits(m) = 1 + 0j;
+                s_sync_frame_bits(idx) = 1 + 0j;
             elseif symbol_I < 0 && symbol_Q < 0
-                s_sync_frame_bits(m) = 1 + 1j;
+                s_sync_frame_bits(idx) = 1 + 1j;
             elseif symbol_I > 0 &&  symbol_Q < 0
-                s_sync_frame_bits(m) = 0 + 1j;
+                s_sync_frame_bits(idx) = 0 + 1j;
             end
         end
         
@@ -1581,21 +1602,21 @@ for m = 1 : length(s_symbol) - frame_len
             disp(['编号 ', num2str(m)]);
             
             % SymbolToIdeaSymbol内联实现
-            s_symbol = s_frame;
+            input_frame_symbols = s_frame;
             %% 初始化理想符号数组
-            s_frame_bits = zeros(1,length(s_symbol)) + 1j*zeros(1,length(s_symbol));
-            for m=1:length(s_symbol)
-                symbol_I = real(s_symbol(m));
-                symbol_Q = imag(s_symbol(m));
+            s_frame_bits = zeros(1,length(input_frame_symbols)) + 1j*zeros(1,length(input_frame_symbols));
+            for idx2=1:length(input_frame_symbols)
+                symbol_I = real(input_frame_symbols(idx2));
+                symbol_Q = imag(input_frame_symbols(idx2));
                 
                 if symbol_I > 0 && symbol_Q > 0
-                    s_frame_bits(m) = 0 + 0j;
+                    s_frame_bits(idx2) = 0 + 0j;
                 elseif symbol_I < 0 && symbol_Q > 0
-                    s_frame_bits(m) = 1 + 0j;
+                    s_frame_bits(idx2) = 1 + 0j;
                 elseif symbol_I < 0 && symbol_Q < 0
-                    s_frame_bits(m) = 1 + 1j;
+                    s_frame_bits(idx2) = 1 + 1j;
                 elseif symbol_I > 0 &&  symbol_Q < 0
-                    s_frame_bits(m) = 0 + 1j;
+                    s_frame_bits(idx2) = 0 + 1j;
                 end
             end
             
@@ -1949,6 +1970,9 @@ fprintf('  - 数据类型验证通过：输入为复数信号\n');
 
 %% 解扰模块实现代码
 % lib/FrameScramblingModule.m
+% 设置输入数据（使用帧同步后的数据）
+s_symbols = sync_frame_bits;
+
 %% 获取x的形状
 [rows,columns] = size(s_symbols);
 x = zeros(rows,columns-32);
@@ -1975,8 +1999,39 @@ for m=1:rows
    Q_row_bits = Q_bits(m,:);
    
    % 尝试解扰，考虑IQ未反向
-   I_deScrambling = ScramblingModule(I_row_bits,InPhase_I);
-   Q_deScrambling = ScramblingModule(Q_row_bits,InPhase_Q);
+   % I路解扰（内联ScramblingModule实现）
+   data = I_row_bits;
+   InPhase = InPhase_I;
+   N = length(data);
+   I_deScrambling = zeros(1,N);
+   for idx_i=1:N
+       I_deScrambling(idx_i) = bitxor(InPhase(15),data(idx_i));
+       scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+       
+       % 更新模拟移位寄存器
+       for n=0:13
+          InPhase(15-n) = InPhase(14-n);
+       end
+       
+       InPhase(1) = scrambled_feedback;
+   end
+   
+   % Q路解扰（内联ScramblingModule实现）
+   data = Q_row_bits;
+   InPhase = InPhase_Q;
+   N = length(data);
+   Q_deScrambling = zeros(1,N);
+   for idx_q=1:N
+       Q_deScrambling(idx_q) = bitxor(InPhase(15),data(idx_q));
+       scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+       
+       % 更新模拟移位寄存器
+       for n=0:13
+          InPhase(15-n) = InPhase(14-n);
+       end
+       
+       InPhase(1) = scrambled_feedback;
+   end
    
    % 检查是否合法
    if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
@@ -1986,14 +2041,45 @@ for m=1:rows
    else
        % 假设未解扰成功
        % IQ两路交换，然后解扰
-       I_deScrambling = ScramblingModule(I_row_bits,InPhase_Q);
-       Q_deScrambling = ScramblingModule(Q_row_bits,InPhase_I);
+       % I路用Q路初相解扰（内联ScramblingModule实现）
+       data = I_row_bits;
+       InPhase = InPhase_Q;
+       N = length(data);
+       I_deScrambling_swap = zeros(1,N);
+       for idx_i2=1:N
+           I_deScrambling_swap(idx_i2) = bitxor(InPhase(15),data(idx_i2));
+           scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+           
+           % 更新模拟移位寄存器
+           for n=0:13
+              InPhase(15-n) = InPhase(14-n);
+           end
+           
+           InPhase(1) = scrambled_feedback;
+       end
+       
+       % Q路用I路初相解扰（内联ScramblingModule实现）
+       data = Q_row_bits;
+       InPhase = InPhase_I;
+       N = length(data);
+       Q_deScrambling_swap = zeros(1,N);
+       for idx_q2=1:N
+           Q_deScrambling_swap(idx_q2) = bitxor(InPhase(15),data(idx_q2));
+           scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+           
+           % 更新模拟移位寄存器
+           for n=0:13
+              InPhase(15-n) = InPhase(14-n);
+           end
+           
+           InPhase(1) = scrambled_feedback;
+       end
        
        % 检查是否合法
-       if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
+       if I_deScrambling_swap(8159) == 0 && I_deScrambling_swap(8160) == 0 && Q_deScrambling_swap(8159) == 0 && Q_deScrambling_swap(8160) == 0
            disp("合法，但翻转");
-           I_array(m,:) = Q_deScrambling;
-           Q_array(m,:) = I_deScrambling;
+           I_array(m,:) = Q_deScrambling_swap;
+           Q_array(m,:) = I_deScrambling_swap;
        else
            % 维持原样输出
            I_array(m,:) = I_deScrambling;
