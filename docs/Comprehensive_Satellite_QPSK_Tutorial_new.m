@@ -190,30 +190,30 @@ disp(config.QBytesFilename);
 % *   Nread: 要读取的数据点数，-1表示读取文件中所有剩余数据
 
 %% 代码实现详解
-% ```matlab
-% % lib/SignalLoader.m
-% function y = SignalLoader(filename,pointStart,Nread)
-% % 打开文件
-% fid = fopen(filename, 'rb');
-% 
-% % 设置搜索指针
-% fseek(fid, (pointStart - 1) * 8, 'bof');
-% 
-% % 读取数据
-% if Nread == -1
-%     % 读取文件中所有剩余数据
-%     raw = fread(fid, [2, Inf], 'int16');
-% else
-%     % 读取指定数量的数据
-%     raw = fread(fid, [2, Nread], 'int16');
-% end
-% 
-% y = complex(raw(1,:), raw(2,:));
-% 
-% %关闭指针
-% fclose(fid);
-% end
-% ```
+
+% lib/SignalLoader.m
+function y = SignalLoader(filename,pointStart,Nread)
+% 打开文件
+fid = fopen(filename, 'rb');
+
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+y = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+end
+
 
 %% 关键实现细节
 % 1. 文件指针定位：fseek(fid, (pointStart - 1) * 8, 'bof')中乘以8是因为每个复数点包含两个int16值（I和Q），每个int16占2字节，总共4字节。
@@ -224,34 +224,32 @@ disp(config.QBytesFilename);
 % 为了验证SignalLoader函数的正确性，我们可以编写以下单元测试：
 
 %% 单元测试示例：SignalLoader
-function test_SignalLoader()
-    % 创建测试数据
-    test_data = complex([1, 2, 3, 4, 5], [6, 7, 8, 9, 10]);
-    
-    % 保存为二进制文件
-    filename = 'test_signal.bin';
-    fid = fopen(filename, 'wb');
-    for i = 1:length(test_data)
-        fwrite(fid, [int16(real(test_data(i))), int16(imag(test_data(i)))], 'int16');
-    end
-    fclose(fid);
-    
-    % 测试SignalLoader函数
-    loaded_data = SignalLoader(filename, 1, 5);
-    
-    % 验证结果
-    assert(isequal(test_data, loaded_data), 'SignalLoader测试失败：数据不匹配');
-    
-    % 测试部分读取功能
-    partial_data = SignalLoader(filename, 2, 3);
-    expected_partial = test_data(2:4);
-    assert(isequal(expected_partial, partial_data), 'SignalLoader测试失败：部分读取功能错误');
-    
-    % 清理测试文件
-    delete(filename);
-    
-    fprintf('SignalLoader单元测试通过！\n');
+% 创建测试数据
+test_data = complex([1, 2, 3, 4, 5], [6, 7, 8, 9, 10]);
+
+% 保存为二进制文件
+filename = 'test_signal.bin';
+fid = fopen(filename, 'wb');
+for i = 1:length(test_data)
+    fwrite(fid, [int16(real(test_data(i))), int16(imag(test_data(i)))], 'int16');
 end
+fclose(fid);
+
+% 测试SignalLoader函数
+loaded_data = SignalLoader(filename, 1, 5);
+
+% 验证结果
+assert(isequal(test_data, loaded_data), 'SignalLoader测试失败：数据不匹配');
+
+% 测试部分读取功能
+partial_data = SignalLoader(filename, 2, 3);
+expected_partial = test_data(2:4);
+assert(isequal(expected_partial, partial_data), 'SignalLoader测试失败：部分读取功能错误');
+
+% 清理测试文件
+delete(filename);
+
+fprintf('SignalLoader单元测试通过！\n');
 
 %% 测试执行与验证
 % 1. 运行测试函数：在MATLAB命令窗口执行 test_SignalLoader()
@@ -299,29 +297,29 @@ end
 %% 代码实现详解
 % 在 lib/RRCFilterFixedLen.m 中，核心是MATLAB的 rcosdesign 函数。
 % 
-% ```matlab
-% % lib/RRCFilterFixedLen.m
-% function y = RRCFilterFixedLen(fb, fs, x, alpha, mode)
-%     % 参数
-%     span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
-%     sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
-%     
-%     % 生成滤波器系数
-%     % 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
-%     if strcmpi(mode, 'rrc')
-%         % Root Raised Cosine
-%         h = rcosdesign(alpha, span, sps, 'sqrt');
-%     elseif strcmpi(mode, 'rc')
-%         % Raised Cosine
-%         h = rcosdesign(alpha, span, sps, 'normal');
-%     else
-%         error('Unsupported mode. Use ''rrc'' or ''rc''.');
-%     end
-%     
-%     % 卷积，'same' 参数使输出长度与输入长度一致
-%     y = conv(x, h, 'same');
-% end
-% ```
+% 
+% lib/RRCFilterFixedLen.m
+function y = RRCFilterFixedLen(fb, fs, x, alpha, mode)
+    % 参数
+    span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
+    sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+    
+    % 生成滤波器系数
+    % 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
+    if strcmpi(mode, 'rrc')
+        % Root Raised Cosine
+        h = rcosdesign(alpha, span, sps, 'sqrt');
+    elseif strcmpi(mode, 'rc')
+        % Raised Cosine
+        h = rcosdesign(alpha, span, sps, 'normal');
+    else
+        error('Unsupported mode. Use ''rrc'' or ''rc''.');
+    end
+    
+    % 卷积，'same' 参数使输出长度与输入长度一致
+    y = conv(x, h, 'same');
+end
+% 
 
 %% 关键实现细节
 % 1. span参数：滤波器长度，单位为符号数。值为8表示滤波器覆盖8个符号的长度。
