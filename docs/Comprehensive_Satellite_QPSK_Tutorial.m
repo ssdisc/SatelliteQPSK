@@ -178,6 +178,34 @@ fprintf('  读取模式: 全部数据 (bitsLength = -1)\n');
 fprintf('  说明: 参考程梓睿同学的实现，使用-1来指示读取文件中的全部数据\n');
 fprintf('  理论样本数: %.0f 个复数样本 (1MB文件 ÷ 4字节/样本)\n', 1024000/4);
 
+% === 快速验证测试 ===
+fprintf('\n=== 快速验证测试 ===\n');
+if exist(config.filename, 'file')
+    fprintf('✓ 数据文件存在\n');
+    file_info = dir(config.filename);
+    fprintf('✓ 文件大小: %.2f MB\n', file_info.bytes/1024/1024);
+    
+    % 测试读取前10个样本
+    try
+        fid = fopen(config.filename, 'rb');
+        test_data = fread(fid, 20, 'int16');  % 10个复数 = 20个int16
+        fclose(fid);
+        
+        if length(test_data) == 20
+            test_complex = complex(int16(test_data(1:2:end)), int16(test_data(2:2:end)));
+            fprintf('✓ 文件读取测试通过 - 前5个样本: %s\n', ...
+                sprintf('%d+%dj ', [real(test_complex(1:5)); imag(test_complex(1:5))]));
+        else
+            fprintf('⚠ 文件读取测试: 数据长度不足\n');
+        end
+    catch ME
+        fprintf('✗ 文件读取测试失败: %s\n', ME.message);
+    end
+else
+    fprintf('⚠ 数据文件不存在，将使用仿真数据\n');
+end
+fprintf('=== 测试完成，开始正式处理 ===\n\n');
+
 % 采样率参数
 config.fs_original = 500e6;        % 原始采样率 500MHz
 config.downSampleRate = 500/150;   % 下采样倍数
@@ -613,16 +641,19 @@ if exist(config.filename, 'file')
             end
             fclose(fid);
             
-            % 转换为复数格式
+            % 转换为复数格式（保持int16精度）
             if mod(length(raw_data_int16), 2) ~= 0
                 raw_data_int16 = raw_data_int16(1:end-1);
             end
-            rawData = complex(raw_data_int16(1:2:end), raw_data_int16(2:2:end));
             
-            % 转换为double类型
-            rawData = double(rawData);
+            % 创建int16复数数组（避免精度损失）
+            I_samples = raw_data_int16(1:2:end);
+            Q_samples = raw_data_int16(2:2:end);
             
-            fprintf('备用读取方法完成，读取%d个样本\n', length(rawData));
+            % 保持int16格式，仅在需要计算时转为double
+            rawData = complex(int16(I_samples), int16(Q_samples));
+            
+            fprintf('备用读取方法完成，读取%d个样本 (保持int16格式)\n', length(rawData));
         end
         
         % 验证数据有效性
@@ -634,7 +665,15 @@ if exist(config.filename, 'file')
         fprintf('\n数据加载成功!\n');
         fprintf('  实际加载长度: %d 个复数样本\n', length(rawData));
         fprintf('  数据类型: %s\n', class(rawData));
-        fprintf('  内存占用: %.2f MB\n', (length(rawData) * 16) / 1024 / 1024); % 复数double占16字节
+        
+        % 计算内存占用（int16复数）
+        if isa(rawData, 'int16')
+            memory_size_mb = (length(rawData) * 8) / 1024 / 1024;  % int16复数占8字节
+            fprintf('  内存占用: %.2f MB (int16复数)\n', memory_size_mb);
+        else
+            memory_size_mb = (length(rawData) * 16) / 1024 / 1024;  % double复数占16字节
+            fprintf('  内存占用: %.2f MB (double复数)\n', memory_size_mb);
+        end
         
         % === 关键验证步骤：数据正确性检查 ===
         fprintf('\n=== 数据正确性验证 ===\n');
@@ -654,13 +693,18 @@ if exist(config.filename, 'file')
         % 2. 验证数据类型和复数结构
         if iscomplex(rawData)
             fprintf('✓ 复数结构验证: 通过\n');
+            if isa(rawData, 'int16')
+                fprintf('✓ 数据格式验证: int16复数 (推荐格式)\n');
+            else
+                fprintf('⚠ 数据格式提示: %s复数 (非int16格式)\n', class(rawData));
+            end
         else
             fprintf('✗ 复数结构验证: 失败，数据不是复数类型\n');
         end
         
         % 3. 验证数据范围（int16范围检查）
-        real_range = [min(real(rawData)), max(real(rawData))];
-        imag_range = [min(imag(rawData)), max(imag(rawData))];
+        real_range = double([min(real(rawData)), max(real(rawData))]);  % 转为double进行比较
+        imag_range = double([min(imag(rawData)), max(imag(rawData))]);
         int16_range = [-32768, 32767];
         
         if real_range(1) >= int16_range(1) && real_range(2) <= int16_range(2) && ...
@@ -670,6 +714,10 @@ if exist(config.filename, 'file')
             fprintf('    Q路范围: [%.0f, %.0f]\n', imag_range(1), imag_range(2));
         else
             fprintf('✗ 数据范围验证: 失败，超出int16范围\n');
+            fprintf('    I路范围: [%.0f, %.0f] (应在[%.0f, %.0f]内)\n', ...
+                real_range(1), real_range(2), int16_range(1), int16_range(2));
+            fprintf('    Q路范围: [%.0f, %.0f] (应在[%.0f, %.0f]内)\n', ...
+                imag_range(1), imag_range(2), int16_range(1), int16_range(2));
         end
         
         % 4. 验证数据读取方法的一致性（关键测试）
@@ -689,25 +737,26 @@ if exist(config.filename, 'file')
             verify_raw = fread(fid_verify, verify_samples * 2, 'int16');
             fclose(fid_verify);
             
-            % 转换为复数
+            % 转换为复数（保持int16格式）
             if mod(length(verify_raw), 2) ~= 0
                 verify_raw = verify_raw(1:end-1);
             end
-            verify_data = complex(verify_raw(1:2:end), verify_raw(2:2:end));
-            verify_data = double(verify_data);
+            I_verify = verify_raw(1:2:end);
+            Q_verify = verify_raw(2:2:end);
+            verify_data = complex(int16(I_verify), int16(Q_verify));
             
-            % 比较数据
+            % 比较数据（转为double进行精度比较）
             comparison_samples = min(length(verify_data), verify_samples);
-            data_diff = abs(rawData(1:comparison_samples) - verify_data(1:comparison_samples));
+            data_diff = abs(double(rawData(1:comparison_samples)) - double(verify_data(1:comparison_samples)));
             max_diff = max(data_diff);
             
-            if max_diff < 1e-10  % 数值精度误差范围内
+            if max_diff < 1  % int16精度范围内，允许1个LSB的差异
                 fprintf('✓ 读取方法一致性: 通过 (最大差异: %.2e)\n', max_diff);
             else
                 fprintf('✗ 读取方法一致性: 失败 (最大差异: %.2e)\n', max_diff);
                 fprintf('    前5个样本对比:\n');
                 for i = 1:min(5, comparison_samples)
-                    fprintf('      样本%d: 主方法=%.3f+%.3fj, 验证方法=%.3f+%.3fj\n', ...
+                    fprintf('      样本%d: 主方法=%d+%dj, 验证方法=%d+%dj\n', ...
                         i, real(rawData(i)), imag(rawData(i)), real(verify_data(i)), imag(verify_data(i)));
                 end
             end
@@ -718,8 +767,8 @@ if exist(config.filename, 'file')
         % 5. 验证数据的连续性（检测是否有跳跃或异常）
         fprintf('\n--- 数据连续性检查 ---\n');
         if length(rawData) > 100
-            % 检查幅度突变
-            amplitude = abs(rawData);
+            % 检查幅度突变（转为double进行统计计算）
+            amplitude = double(abs(rawData));
             amp_diff = abs(diff(amplitude));
             amp_mean = mean(amplitude);
             amp_std = std(amplitude);
@@ -910,15 +959,17 @@ if exist(config.filename, 'file')
                     fclose(fid_random);
                     
                     if length(random_raw) >= 10
-                        % 转换为复数
-                        random_complex = complex(random_raw(1:2:end), random_raw(2:2:end));
+                        % 转换为复数（保持int16格式）
+                        I_random = random_raw(1:2:end);
+                        Q_random = random_raw(2:2:end);
+                        random_complex = complex(int16(I_random), int16(Q_random));
                         
-                        % 与rawData中对应位置比较
+                        % 与rawData中对应位置比较（转为double进行比较）
                         memory_data = rawData(pos:pos+4);
-                        diff_random = abs(memory_data - random_complex);
+                        diff_random = abs(double(memory_data) - double(random_complex));
                         max_diff_random = max(diff_random);
                         
-                        if max_diff_random < 1e-10
+                        if max_diff_random < 1  % int16精度范围内
                             fprintf('  ✓ 位置%d: 匹配 (差异: %.2e)\n', pos, max_diff_random);
                         else
                             fprintf('  ✗ 位置%d: 不匹配 (差异: %.2e)\n', pos, max_diff_random);
@@ -943,13 +994,22 @@ if exist(config.filename, 'file')
         
         % 12. 数据读取性能统计
         fprintf('\n--- 数据读取性能统计 ---\n');
-        data_size_mb = length(rawData) * 16 / 1024 / 1024;  % 复数double
+        
+        % 根据数据类型计算内存占用
+        if isa(rawData, 'int16')
+            data_size_mb = length(rawData) * 8 / 1024 / 1024;  % int16复数占8字节
+            type_conversion = 'int16 → int16 complex (无损转换)';
+        else
+            data_size_mb = length(rawData) * 16 / 1024 / 1024;  % double复数占16字节
+            type_conversion = 'int16 → double complex (精度提升)';
+        end
+        
         file_size_mb = file_info.bytes / 1024 / 1024;
         
         fprintf('性能指标:\n');
         fprintf('  文件大小: %.2f MB\n', file_size_mb);
         fprintf('  内存占用: %.2f MB (扩展因子: %.1fx)\n', data_size_mb, data_size_mb/file_size_mb);
-        fprintf('  数据类型转换: int16 → double complex\n');
+        fprintf('  数据类型转换: %s\n', type_conversion);
         fprintf('  读取效率: %.1f%% (%.0f/%.0f 样本)\n', ...
             length(rawData)/theoretical_samples*100, length(rawData), theoretical_samples);
         
@@ -1033,26 +1093,35 @@ if exist(config.filename, 'file')
         end
         fprintf('%s\n', repmat('=', 1, 60));
         
-        % 统计分析
+        % 统计分析（转为double进行统计计算）
         fprintf('\n数据质量分析:\n');
-        fprintf('  实部统计: 均值=%.3f, 标准差=%.3f\n', mean(real(rawData)), std(real(rawData)));
-        fprintf('  虚部统计: 均值=%.3f, 标准差=%.3f\n', mean(imag(rawData)), std(imag(rawData)));
-        fprintf('  最大幅值: %.3f\n', max(abs(rawData)));
-        fprintf('  平均功率: %.3f\n', mean(abs(rawData).^2));
-        fprintf('  动态范围: %.1f dB\n', 20*log10(max(abs(rawData))/sqrt(mean(abs(rawData).^2))));
         
-        % 检查数据是否存在明显异常
+        % 转为double进行精确的统计计算
+        real_data = double(real(rawData));
+        imag_data = double(imag(rawData));
+        abs_data = double(abs(rawData));
+        
+        fprintf('  实部统计: 均值=%.3f, 标准差=%.3f\n', mean(real_data), std(real_data));
+        fprintf('  虚部统计: 均值=%.3f, 标准差=%.3f\n', mean(imag_data), std(imag_data));
+        fprintf('  最大幅值: %.3f\n', max(abs_data));
+        fprintf('  平均功率: %.3f\n', mean(abs_data.^2));
+        fprintf('  动态范围: %.1f dB\n', 20*log10(max(abs_data)/sqrt(mean(abs_data.^2))));
+        
+        % 显示数据类型信息
+        fprintf('  数据格式: %s (原始文件: int16)\n', class(rawData));
+        
+        % 检查数据是否存在明显异常（转为double进行检查）
         data_issues = {};
-        if mean(abs(rawData)) == 0
+        if mean(abs_data) == 0
             data_issues{end+1} = '数据全为零';
         end
-        if std(real(rawData)) / std(imag(rawData)) > 10 || std(imag(rawData)) / std(real(rawData)) > 10
+        if std(real_data) / std(imag_data) > 10 || std(imag_data) / std(real_data) > 10
             data_issues{end+1} = 'I/Q分量不平衡';
         end
-        if sum(isnan(rawData)) > 0
+        if sum(isnan(double(rawData))) > 0
             data_issues{end+1} = '包含NaN值';
         end
-        if sum(isinf(rawData)) > 0
+        if sum(isinf(double(rawData))) > 0
             data_issues{end+1} = '包含无穷大值';
         end
         
