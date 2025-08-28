@@ -191,8 +191,8 @@ disp(config.QBytesFilename);
 
 %% 代码实现详解
 
+%% SignalLoader实现代码
 % lib/SignalLoader.m
-function y = SignalLoader(filename,pointStart,Nread)
 % 打开文件
 fid = fopen(filename, 'rb');
 
@@ -212,7 +212,6 @@ y = complex(raw(1,:), raw(2,:));
 
 %关闭指针
 fclose(fid);
-end
 
 
 %% 关键实现细节
@@ -245,15 +244,64 @@ if ~exist(config.inputDataFilename, 'file')
     fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
 end
 
-% 测试SignalLoader函数 - 读取前1000个数据点
-loaded_data = SignalLoader(config.inputDataFilename, 1, 1000);
+% 测试SignalLoader函数 - 读取前1000个数据点（使用脚本形式的SignalLoader代码）
+% SignalLoader脚本代码开始
+filename = config.inputDataFilename;
+pointStart = 1;
+Nread = 1000;
+
+% 打开文件
+fid = fopen(filename, 'rb');
+
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+loaded_data = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+% SignalLoader脚本代码结束
 
 % 验证输出是复数信号
 assert(isnumeric(loaded_data) && isreal(loaded_data) == false, 'SignalLoader测试失败：输出不是复数信号');
 assert(length(loaded_data) == 1000, 'SignalLoader测试失败：读取数据长度不正确');
 
-% 测试部分读取功能 - 从第500个点开始读取500个数据点
-partial_data = SignalLoader(config.inputDataFilename, 500, 500);
+% 测试部分读取功能 - 从第500个点开始读取500个数据点（使用脚本形式的SignalLoader代码）
+% SignalLoader脚本代码开始
+filename = config.inputDataFilename;
+pointStart = 500;
+Nread = 500;
+
+% 打开文件
+fid = fopen(filename, 'rb');
+
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+partial_data = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+% SignalLoader脚本代码结束
+
 assert(length(partial_data) == 500, 'SignalLoader测试失败：部分读取数据长度不正确');
 
 % 验证数据一致性 - 两次读取的数据应该有重叠部分
@@ -268,7 +316,7 @@ fprintf('  - 部分读取功能验证通过\n');
 fprintf('  - 数据一致性验证通过\n');
 
 %% 测试执行与验证
-% 1. 运行测试函数：在MATLAB命令窗口执行 test_SignalLoader()
+% 1. 以上测试代码用于验证SignalLoader函数的正确性
 % 2. 验证输出：如果所有测试都通过，将显示"SignalLoader单元测试通过！"
 % 3. 错误处理：如果测试失败，会显示相应的错误信息，帮助定位问题
 
@@ -314,27 +362,26 @@ fprintf('  - 数据一致性验证通过\n');
 % 在 lib/RRCFilterFixedLen.m 中，核心是MATLAB的 rcosdesign 函数。
 % 
 % 
+%% RRCFilterFixedLen实现代码
 % lib/RRCFilterFixedLen.m
-function y = RRCFilterFixedLen(fb, fs, x, alpha, mode)
-    % 参数
-    span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
-    sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
-    
-    % 生成滤波器系数
-    % 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
-    if strcmpi(mode, 'rrc')
-        % Root Raised Cosine
-        h = rcosdesign(alpha, span, sps, 'sqrt');
-    elseif strcmpi(mode, 'rc')
-        % Raised Cosine
-        h = rcosdesign(alpha, span, sps, 'normal');
-    else
-        error('Unsupported mode. Use ''rrc'' or ''rc''.');
-    end
-    
-    % 卷积，'same' 参数使输出长度与输入长度一致
-    y = conv(x, h, 'same');
+% 参数
+span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
+sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+
+% 生成滤波器系数
+% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
+if strcmpi(mode, 'rrc')
+    % Root Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'sqrt');
+elseif strcmpi(mode, 'rc')
+    % Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'normal');
+else
+    error('Unsupported mode. Use ''rrc'' or ''rc''.');
 end
+
+% 卷积，'same' 参数使输出长度与输入长度一致
+y = conv(x, h, 'same');
 % 
 
 %% 关键实现细节
@@ -386,11 +433,60 @@ if ~exist(config.inputDataFilename, 'file')
     fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
 end
 
-% 加载真实信号数据
-s_raw = SignalLoader(config.inputDataFilename, 1, 10000);  % 加载前10000个数据点
+% 加载真实信号数据（使用脚本形式的SignalLoader代码）
+% SignalLoader脚本代码开始
+filename = config.inputDataFilename;
+pointStart = 1;
+Nread = 10000;
 
-% 应用RRC滤波器
-filtered_signal = RRCFilterFixedLen(config.fb, config.fs, s_raw, config.rollOff, 'rrc');
+% 打开文件
+fid = fopen(filename, 'rb');
+
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+s_raw = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+% SignalLoader脚本代码结束
+
+% 应用RRC滤波器（使用脚本形式的RRCFilterFixedLen代码）
+% RRCFilterFixedLen脚本代码开始
+fb = config.fb;
+fs = config.fs;
+x = s_raw;
+alpha = config.rollOff;
+mode = 'rrc';
+
+% 参数
+span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
+sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+
+% 生成滤波器系数
+% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
+if strcmpi(mode, 'rrc')
+    % Root Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'sqrt');
+elseif strcmpi(mode, 'rc')
+    % Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'normal');
+else
+    error('Unsupported mode. Use ''rrc'' or ''rc''.');
+end
+
+% 卷积，'same' 参数使输出长度与输入长度一致
+filtered_signal = conv(x, h, 'same');
+% RRCFilterFixedLen脚本代码结束
 
 % 验证输出长度与输入长度一致
 assert(length(filtered_signal) == length(s_raw), 'RRC滤波器长度不匹配');
@@ -428,7 +524,7 @@ fprintf('  - 滤波器参数：滚降系数=%.2f，符号率=%.0f MHz\n', config
 fprintf('  - 滤波后信号带宽限制效果良好，%.1f%%的能量集中在奈奎斯特带宽内\n', power_ratio*100);
 
 %% 测试执行与验证
-% 1. 运行测试函数：在MATLAB命令窗口执行 test_RRCFilterFixedLen()
+% 1. 以上测试代码用于验证RRCFilterFixedLen函数的正确性
 % 2. 验证输出：如果所有测试都通过，将显示"RRCFilterFixedLen单元测试通过！"
 % 3. 频谱观察：可以通过绘制滤波前后信号的频谱对比，验证滤波效果
 % 4. 眼图分析：可以使用eyediagram函数观察滤波后信号的眼图质量
@@ -514,7 +610,6 @@ fprintf('  - 滤波后信号带宽限制效果良好，%.1f%%的能量集中在�
 
 %% Gardner定时同步实现代码
 % lib/GardnerSymbolSync.m
-function y_IQ_Array = GardnerSymbolSync(s_qpsk,sps,B_loop,zeta)
 %% 参数配置
 Wn = 2 * pi * B_loop / sps;  % 环路自然频率
 
@@ -550,9 +645,50 @@ for m = 6 : length(s_qpsk)-3
         mu = (0.5 - ncoPhase_old) / wFilterLast;
         base_idx = m - 1;
 
-        % --- 使用Farrow 立方插值器 ---
-        y_I_sample = FarrowCubicInterpolator(base_idx, real(s_qpsk), mu);
-        y_Q_sample = FarrowCubicInterpolator(base_idx, imag(s_qpsk), mu);
+        % --- 使用Farrow 立方插值器 (内联实现) ---
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = real(s_qpsk);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_I_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_I_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = imag(s_qpsk);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_Q_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_Q_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
         
         if isStrobeSample
             % === 当前是判决点 (Strobe Point) ===
@@ -597,27 +733,25 @@ end
 %% 输出复数结果
 y_IQ_Array = y_I_Array + 1j * y_Q_Array;
 
+%% FarrowCubicInterpolator实现代码
+% lib/FarrowCubicInterpolator.m
+% Farrow 结构三阶(Cubic)插值器
+% 使用 index-1, index, index+1, index+2 四个点估计 x(index+u)
+if index < 2 || index > length(x) - 2
+    y = 0; return;
 end
+x_m1 = x(index - 1);
+x_0  = x(index);
+x_p1 = x(index + 1);
+x_p2 = x(index + 2);
 
-function y = FarrowCubicInterpolator(index, x, u)
-    % Farrow 结构三阶(Cubic)插值器
-    % 使用 index-1, index, index+1, index+2 四个点估计 x(index+u)
-    if index < 2 || index > length(x) - 2
-        y = 0; return;
-    end
-    x_m1 = x(index - 1);
-    x_0  = x(index);
-    x_p1 = x(index + 1);
-    x_p2 = x(index + 2);
-    
-    % Farrow 结构系数
-    c0 = x_0;
-    c1 = 0.5 * (x_p1 - x_m1);
-    c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
-    c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
-    
-    y = ((c3 * u + c2) * u + c1) * u + c0;
-end
+% Farrow 结构系数
+c0 = x_0;
+c1 = 0.5 * (x_p1 - x_m1);
+c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+
+y = ((c3 * u + c2) * u + c1) * u + c0;
 
 %% 关键实现细节
 % 1. NCO（数控振荡器）：通过ncoPhase累加器和wFilterLast步进控制采样时刻
@@ -675,25 +809,193 @@ if ~exist(config.inputDataFilename, 'file')
     fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
 end
 
-% 加载真实信号数据
-s_raw = SignalLoader(config.inputDataFilename, 1, 10000);  % 加载前10000个数据点
+% 加载真实信号数据（使用脚本形式的SignalLoader代码）
+% SignalLoader脚本代码开始
+filename = config.inputDataFilename;
+pointStart = 1;
+Nread = 10000;
 
-% 应用RRC滤波器预处理
-s_qpsk = RRCFilterFixedLen(config.fb, config.fs, s_raw, config.rollOff, 'rrc');
+% 打开文件
+fid = fopen(filename, 'rb');
 
-% 应用Gardner同步算法
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+s_raw = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+% SignalLoader脚本代码结束
+
+% 应用RRC滤波器预处理（使用脚本形式的RRCFilterFixedLen代码）
+% RRCFilterFixedLen脚本代码开始
+fb = config.fb;
+fs = config.fs;
+x = s_raw;
+alpha = config.rollOff;
+mode = 'rrc';
+
+% 参数
+span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
+sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+
+% 生成滤波器系数
+% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
+if strcmpi(mode, 'rrc')
+    % Root Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'sqrt');
+elseif strcmpi(mode, 'rc')
+    % Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'normal');
+else
+    error('Unsupported mode. Use ''rrc'' or ''rc''.');
+end
+
+% 卷积，'same' 参数使输出长度与输入长度一致
+s_qpsk = conv(x, h, 'same');
+% RRCFilterFixedLen脚本代码结束
+
+% 应用Gardner同步算法（使用脚本形式的GardnerSymbolSync代码）
+% GardnerSymbolSync脚本代码开始
+s_qpsk_input = s_qpsk;
+sps = floor(config.fs / config.fb);
 B_loop = 0.0001;  % 归一化环路带宽
 zeta = 0.707;     % 阻尼系数
-sps = floor(config.fs / config.fb);  % 每符号采样数
 
-% 测试函数调用
-try
-    sync_output = GardnerSymbolSync(s_qpsk, sps, B_loop, zeta);
-    fprintf('GardnerSymbolSync函数调用成功\n');
-catch ME
-    fprintf('GardnerSymbolSync函数调用失败: %s\n', ME.message);
-    return;
+%% 参数配置
+Wn = 2 * pi * B_loop / sps;  % 环路自然频率
+
+% 环路滤波器(PI)系数
+c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
+c2 = (4 * Wn^2)      / (1 + 2 * zeta * Wn + Wn^2);
+
+%% 初始化状态
+ncoPhase = 0;                    % NCO相位累加器
+wFilterLast = 1 / sps;           % 初始定时步进 (每个输入样本代表 1/sps 个符号)
+
+% 算法状态变量
+isStrobeSample = false;          % 状态标志: false->中点采样, true->判决点采样
+timeErrLast = 0;                 % 上一次的定时误差
+wFilter = wFilterLast;           % 环路滤波器输出
+
+% 数据存储
+y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
+mid_I = 0; mid_Q = 0;             % 中点采样值
+y_I_Array = []; y_Q_Array = [];  % 输出数组
+
+%% Gardner 同步主循环
+for m = 6 : length(s_qpsk_input)-3
+    % NCO相位累加 (每个输入样本前进 wFilterLast 的相位)
+    % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
+    ncoPhase_old = ncoPhase;
+    ncoPhase = ncoPhase + wFilterLast;
+
+    % 使用 while 循环处理
+    while ncoPhase >= 0.5
+        % --- 关键修复 1: 正确计算插值时刻 (mu) ---
+        % 计算过冲点在当前采样区间的归一化位置
+        mu = (0.5 - ncoPhase_old) / wFilterLast;
+        base_idx = m - 1;
+
+        % --- 使用Farrow 立方插值器 (内联实现) ---
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = real(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_I_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_I_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = imag(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_Q_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_Q_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        if isStrobeSample
+            % === 当前是判决点 (Strobe Point) ===
+
+            % --- Gardner 误差计算 ---
+            % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
+            timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
+
+            % 环路滤波器
+            wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
+
+            % 存储状态用于下次计算
+            timeErrLast = timeErr;
+            y_last_I = y_I_sample;
+            y_last_Q = y_Q_sample;
+
+            % 将判决点采样存入结果数组
+            y_I_Array(end+1) = y_I_sample;
+            y_Q_Array(end+1) = y_Q_sample;
+
+        else
+            % === 当前是中点 (Midpoint) ===
+            % 存储中点采样值，用于下一次的误差计算
+            mid_I = y_I_sample;
+            mid_Q = y_Q_sample;
+        end
+
+        % 更新环路滤波器输出 (每个判决点更新一次)
+        if isStrobeSample
+            wFilterLast = wFilter;
+        end
+
+        % 切换状态: 判决点 -> 中点, 中点 -> 判决点
+        isStrobeSample = ~isStrobeSample;
+        
+        % NCO相位减去已处理的0.5个符号周期，并为下一次可能的触发更新"旧"相位
+        ncoPhase_old = 0.5; 
+        ncoPhase = ncoPhase - 0.5;
+    end
 end
+
+%% 输出复数结果
+sync_output = y_I_Array + 1j * y_Q_Array;
+% GardnerSymbolSync脚本代码结束
+
+fprintf('GardnerSymbolSync函数调用成功\n');
 
 % 验证输出长度（应该比输入符号数少一些，因为有边界处理）
 expected_min_length = length(s_qpsk) - 100;  % 允许一定的边界损失
@@ -739,7 +1041,7 @@ fprintf('  - 定时同步后输出数据点数：%d\n', length(sync_output));
 fprintf('  - 定时同步效果良好，星座图收敛性得到改善\n');
 
 %% 测试执行与验证
-% 1. 运行测试函数：在MATLAB命令窗口执行 test_GardnerSymbolSync()
+% 1. 以上测试代码用于验证GardnerSymbolSync函数的正确性
 % 2. 验证输出：如果所有测试都通过，将显示相应的通过信息
 % 3. 性能观察：可以通过绘制定时误差曲线观察环路收敛过程
 % 4. 星座图对比：比较同步前后信号的星座图质量
@@ -796,7 +1098,6 @@ fprintf('  - 定时同步效果良好，星座图收敛性得到改善\n');
 
 %% 载波同步实现代码
 % lib/QPSKFrequencyCorrectPLL.m
-function [y,err] = QPSKFrequencyCorrectPLL(x,fc,fs,ki,kp)
 %% 全局变量
 theta = 0;
 theta_integral = 0;
@@ -825,8 +1126,6 @@ for m=1:length(x)
    % 输出当前频偏纠正信号
    y(m) = x(m);
    err(m) = angleErr;
-end
-
 end
 
 %% 关键实现细节
@@ -876,17 +1175,191 @@ if ~exist(config.inputDataFilename, 'file')
     fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
 end
 
-% 加载真实信号数据
-s_raw = SignalLoader(config.inputDataFilename, 1, 10000);  % 加载前10000个数据点
+% 加载真实信号数据（使用脚本形式的SignalLoader代码）
+% SignalLoader脚本代码开始
+filename = config.inputDataFilename;
+pointStart = 1;
+Nread = 10000;
 
-% 应用RRC滤波器预处理
-s_qpsk = RRCFilterFixedLen(config.fb, config.fs, s_raw, config.rollOff, 'rrc');
+% 打开文件
+fid = fopen(filename, 'rb');
 
-% 应用Gardner定时同步
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+s_raw = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+% SignalLoader脚本代码结束
+
+% 应用RRC滤波器预处理（使用脚本形式的RRCFilterFixedLen代码）
+% RRCFilterFixedLen脚本代码开始
+fb = config.fb;
+fs = config.fs;
+x = s_raw;
+alpha = config.rollOff;
+mode = 'rrc';
+
+% 参数
+span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
+sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+
+% 生成滤波器系数
+% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
+if strcmpi(mode, 'rrc')
+    % Root Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'sqrt');
+elseif strcmpi(mode, 'rc')
+    % Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'normal');
+else
+    error('Unsupported mode. Use ''rrc'' or ''rc''.');
+end
+
+% 卷积，'same' 参数使输出长度与输入长度一致
+s_qpsk = conv(x, h, 'same');
+% RRCFilterFixedLen脚本代码结束
+
+% 应用Gardner定时同步（使用脚本形式的GardnerSymbolSync代码）
+% GardnerSymbolSync脚本代码开始
+s_qpsk_input = s_qpsk;
+sps = floor(config.fs / config.fb);
 B_loop = 0.0001;  % 归一化环路带宽
 zeta = 0.707;     % 阻尼系数
-sps = floor(config.fs / config.fb);  % 每符号采样数
-s_qpsk_sto_sync = GardnerSymbolSync(s_qpsk, sps, B_loop, zeta);
+
+%% 参数配置
+Wn = 2 * pi * B_loop / sps;  % 环路自然频率
+
+% 环路滤波器(PI)系数
+c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
+c2 = (4 * Wn^2)      / (1 + 2 * zeta * Wn + Wn^2);
+
+%% 初始化状态
+ncoPhase = 0;                    % NCO相位累加器
+wFilterLast = 1 / sps;           % 初始定时步进 (每个输入样本代表 1/sps 个符号)
+
+% 算法状态变量
+isStrobeSample = false;          % 状态标志: false->中点采样, true->判决点采样
+timeErrLast = 0;                 % 上一次的定时误差
+wFilter = wFilterLast;           % 环路滤波器输出
+
+% 数据存储
+y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
+mid_I = 0; mid_Q = 0;             % 中点采样值
+y_I_Array = []; y_Q_Array = [];  % 输出数组
+
+%% Gardner 同步主循环
+for m = 6 : length(s_qpsk_input)-3
+    % NCO相位累加 (每个输入样本前进 wFilterLast 的相位)
+    % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
+    ncoPhase_old = ncoPhase;
+    ncoPhase = ncoPhase + wFilterLast;
+
+    % 使用 while 循环处理
+    while ncoPhase >= 0.5
+        % --- 关键修复 1: 正确计算插值时刻 (mu) ---
+        % 计算过冲点在当前采样区间的归一化位置
+        mu = (0.5 - ncoPhase_old) / wFilterLast;
+        base_idx = m - 1;
+
+        % --- 使用Farrow 立方插值器 (内联实现) ---
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = real(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_I_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_I_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = imag(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_Q_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_Q_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        if isStrobeSample
+            % === 当前是判决点 (Strobe Point) ===
+
+            % --- Gardner 误差计算 ---
+            % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
+            timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
+
+            % 环路滤波器
+            wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
+
+            % 存储状态用于下次计算
+            timeErrLast = timeErr;
+            y_last_I = y_I_sample;
+            y_last_Q = y_Q_sample;
+
+            % 将判决点采样存入结果数组
+            y_I_Array(end+1) = y_I_sample;
+            y_Q_Array(end+1) = y_Q_sample;
+
+        else
+            % === 当前是中点 (Midpoint) ===
+            % 存储中点采样值，用于下一次的误差计算
+            mid_I = y_I_sample;
+            mid_Q = y_Q_sample;
+        end
+
+        % 更新环路滤波器输出 (每个判决点更新一次)
+        if isStrobeSample
+            wFilterLast = wFilter;
+        end
+
+        % 切换状态: 判决点 -> 中点, 中点 -> 判决点
+        isStrobeSample = ~isStrobeSample;
+        
+        % NCO相位减去已处理的0.5个符号周期，并为下一次可能的触发更新"旧"相位
+        ncoPhase_old = 0.5; 
+        ncoPhase = ncoPhase - 0.5;
+    end
+end
+
+%% 输出复数结果
+s_qpsk_sto_sync = y_I_Array + 1j * y_Q_Array;
+% GardnerSymbolSync脚本代码结束
 
 % 添加频率偏移和相位偏移（模拟实际场景中的载波偏移）
 t = 0:length(s_qpsk_sto_sync)-1;
@@ -899,8 +1372,41 @@ fc = 0;     % 预估频偏
 ki = 0.001; % 积分增益
 kp = 0.01;  % 比例增益
 
-% 应用载波同步
-[sync_signal, error_signal] = QPSKFrequencyCorrectPLL(offset_signal, fc, config.fs, ki, kp);
+% 应用载波同步（使用脚本形式的QPSKFrequencyCorrectPLL代码）
+% QPSKFrequencyCorrectPLL脚本代码开始
+x = offset_signal;
+fs = config.fs;
+
+%% 全局变量
+theta = 0;
+theta_integral = 0;
+
+sync_signal = zeros(1,length(x));
+error_signal = zeros(1,length(x));
+
+%% 主循环
+for m=1:length(x)
+   % 应用初始相位到x
+   x(m) = x(m) * exp(-1j*(theta));
+    
+   % 判断最近星座点
+   desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j;
+   
+   % 计算相位差
+   angleErr = angle(x(m)*conj(desired_point));
+   
+   % 二阶环路滤波器
+   theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
+   theta_integral = theta_integral + angleErr;
+   
+   % 累积相位误差
+   theta = theta + theta_delta + 2 * pi * fc / fs;
+   
+   % 输出当前频偏纠正信号
+   sync_signal(m) = x(m);
+   error_signal(m) = angleErr;
+end
+% QPSKFrequencyCorrectPLL脚本代码结束
 
 % 验证输出信号长度
 assert(length(sync_signal) == length(offset_signal), '输出信号长度不匹配');
@@ -960,7 +1466,7 @@ fprintf('  - 载波同步后输出数据点数：%d\n', length(sync_signal));
 fprintf('  - 载波同步效果良好，星座图质量得到显著改善\n');
 
 %% 测试执行与验证
-% 1. 运行测试函数：在MATLAB命令窗口执行 test_QPSKFrequencyCorrectPLL()
+% 1. 以上测试代码用于验证QPSKFrequencyCorrectPLL函数的正确性
 % 2. 验证输出：如果所有测试都通过，将显示相应的通过信息
 % 3. 收敛性观察：可以通过绘制相位误差曲线观察PLL收敛过程
 % 4. 星座图质量：比较同步前后信号的星座图质量，验证同步效果
@@ -999,11 +1505,36 @@ fprintf('  - 载波同步效果良好，星座图质量得到显著改善\n');
 
 %% 帧同步实现代码
 % lib/FrameSync.m
-function sync_frame_bits = FrameSync(s_symbol)
 %% 定义同步字
 sync_bits_length = 32;
 syncWord = uint8([0x1A,0xCF,0xFC,0x1D]);
-syncWord_bits = ByteArrayToBinarySourceArray(syncWord,"reverse");
+
+% ByteArrayToBinarySourceArray内联实现
+x = syncWord;
+mode = "reverse";
+%% ByteArrayToBinarySourceArray内联实现
+y = [];
+for m=1:length(x)
+    %% ByteToBinarySource内联实现
+    byte_x = x(m);
+    byte_mode = mode;
+    byte_y = zeros(1,8);
+    %% 利用位运算依次取出每一位
+    for n=1:8
+        byte_y(n) = bitand(byte_x,1);
+        byte_x = bitshift(byte_x,-1);
+    end
+    
+    if byte_mode == "reverse"
+        byte_y = fliplr(byte_y);
+    end
+    %% 结束ByteToBinarySource内联实现
+    
+    y = [y,byte_y];
+end
+%% 结束ByteArrayToBinarySourceArray内联实现
+
+syncWord_bits = y;
 ref_bits_I = syncWord_bits;
 ref_bits_Q = syncWord_bits;
 
@@ -1022,7 +1553,24 @@ for m = 1 : length(s_symbol) - frame_len
         
         % 提取前同步字部分
         s_sync_frame = s_frame(1 : sync_bits_length);
-        s_sync_frame_bits = SymbolToIdeaSymbol(s_sync_frame);  % 解调为理想符号
+        % SymbolToIdeaSymbol内联实现
+        s_symbol = s_sync_frame;
+        %% 初始化理想符号数组
+        s_sync_frame_bits = zeros(1,length(s_symbol)) + 1j*zeros(1,length(s_symbol));
+        for m=1:length(s_symbol)
+            symbol_I = real(s_symbol(m));
+            symbol_Q = imag(s_symbol(m));
+            
+            if symbol_I > 0 && symbol_Q > 0
+                s_sync_frame_bits(m) = 0 + 0j;
+            elseif symbol_I < 0 && symbol_Q > 0
+                s_sync_frame_bits(m) = 1 + 0j;
+            elseif symbol_I < 0 && symbol_Q < 0
+                s_sync_frame_bits(m) = 1 + 1j;
+            elseif symbol_I > 0 &&  symbol_Q < 0
+                s_sync_frame_bits(m) = 0 + 1j;
+            end
+        end
         
         i_sync_frame_bits = real(s_sync_frame_bits);
         q_sync_frame_bits = imag(s_sync_frame_bits);
@@ -1032,7 +1580,25 @@ for m = 1 : length(s_symbol) - frame_len
             disp('序列匹配');
             disp(['编号 ', num2str(m)]);
             
-            s_frame_bits = SymbolToIdeaSymbol(s_frame);  % 获取整帧
+            % SymbolToIdeaSymbol内联实现
+            s_symbol = s_frame;
+            %% 初始化理想符号数组
+            s_frame_bits = zeros(1,length(s_symbol)) + 1j*zeros(1,length(s_symbol));
+            for m=1:length(s_symbol)
+                symbol_I = real(s_symbol(m));
+                symbol_Q = imag(s_symbol(m));
+                
+                if symbol_I > 0 && symbol_Q > 0
+                    s_frame_bits(m) = 0 + 0j;
+                elseif symbol_I < 0 && symbol_Q > 0
+                    s_frame_bits(m) = 1 + 0j;
+                elseif symbol_I < 0 && symbol_Q < 0
+                    s_frame_bits(m) = 1 + 1j;
+                elseif symbol_I > 0 &&  symbol_Q < 0
+                    s_frame_bits(m) = 0 + 1j;
+                end
+            end
+            
             sync_frame_bits = [sync_frame_bits; s_frame_bits];
             sync_index_list = [sync_index_list, m];      % 记录匹配位置
             break;
@@ -1047,8 +1613,6 @@ xlabel('符号位置');
 ylabel('同步触发');
 title('帧同步检测位置');
 grid on;
-
-end
 
 %% 关键实现细节
 % 1. 相位穷举：通过 s_frame = s_frame * (1i) 实现90度旋转，穷举4种相位状态
@@ -1087,23 +1651,234 @@ if ~exist(config.inputDataFilename, 'file')
     fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
 end
 
-% 加载真实信号数据
-s_raw = SignalLoader(config.inputDataFilename, 1, 10000);  % 加载前10000个数据点
+% 加载真实信号数据（使用脚本形式的SignalLoader代码）
+% SignalLoader脚本代码开始
+filename = config.inputDataFilename;
+pointStart = 1;
+Nread = 10000;
 
-% 应用RRC滤波器预处理
-s_qpsk = RRCFilterFixedLen(config.fb, config.fs, s_raw, config.rollOff, 'rrc');
+% 打开文件
+fid = fopen(filename, 'rb');
+
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+s_raw = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+% SignalLoader脚本代码结束
+
+% 应用RRC滤波器预处理（使用脚本形式的RRCFilterFixedLen代码）
+% RRCFilterFixedLen脚本代码开始
+fb = config.fb;
+fs = config.fs;
+x = s_raw;
+alpha = config.rollOff;
+mode = 'rrc';
+
+% 参数
+span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
+sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+
+% 生成滤波器系数
+% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
+if strcmpi(mode, 'rrc')
+    % Root Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'sqrt');
+elseif strcmpi(mode, 'rc')
+    % Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'normal');
+else
+    error('Unsupported mode. Use ''rrc'' or ''rc''.');
+end
+
+% 卷积，'same' 参数使输出长度与输入长度一致
+s_qpsk = conv(x, h, 'same');
+% RRCFilterFixedLen脚本代码结束
 
 % 应用Gardner定时同步
 B_loop = 0.0001;  % 归一化环路带宽
 zeta = 0.707;     % 阻尼系数
 sps = floor(config.fs / config.fb);  % 每符号采样数
-s_qpsk_sto_sync = GardnerSymbolSync(s_qpsk, sps, B_loop, zeta);
+
+% 使用脚本形式的GardnerSymbolSync代码
+% GardnerSymbolSync脚本代码开始
+s_qpsk_input = s_qpsk;
+
+%% 参数配置
+Wn = 2 * pi * B_loop / sps;  % 环路自然频率
+
+% 环路滤波器(PI)系数
+c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
+c2 = (4 * Wn^2)      / (1 + 2 * zeta * Wn + Wn^2);
+
+%% 初始化状态
+ncoPhase = 0;                    % NCO相位累加器
+wFilterLast = 1 / sps;           % 初始定时步进 (每个输入样本代表 1/sps 个符号)
+
+% 算法状态变量
+isStrobeSample = false;          % 状态标志: false->中点采样, true->判决点采样
+timeErrLast = 0;                 % 上一次的定时误差
+wFilter = wFilterLast;           % 环路滤波器输出
+
+% 数据存储
+y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
+mid_I = 0; mid_Q = 0;             % 中点采样值
+y_I_Array = []; y_Q_Array = [];  % 输出数组
+
+%% Gardner 同步主循环
+for m = 6 : length(s_qpsk_input)-3
+    % NCO相位累加 (每个输入样本前进 wFilterLast 的相位)
+    % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
+    ncoPhase_old = ncoPhase;
+    ncoPhase = ncoPhase + wFilterLast;
+
+    % 使用 while 循环处理
+    while ncoPhase >= 0.5
+        % --- 关键修复 1: 正确计算插值时刻 (mu) ---
+        % 计算过冲点在当前采样区间的归一化位置
+        mu = (0.5 - ncoPhase_old) / wFilterLast;
+        base_idx = m - 1;
+
+        % --- 使用Farrow 立方插值器 (内联实现) ---
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = real(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_I_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_I_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = imag(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_Q_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_Q_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        if isStrobeSample
+            % === 当前是判决点 (Strobe Point) ===
+
+            % --- Gardner 误差计算 ---
+            % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
+            timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
+
+            % 环路滤波器
+            wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
+
+            % 存储状态用于下次计算
+            timeErrLast = timeErr;
+            y_last_I = y_I_sample;
+            y_last_Q = y_Q_sample;
+
+            % 将判决点采样存入结果数组
+            y_I_Array(end+1) = y_I_sample;
+            y_Q_Array(end+1) = y_Q_sample;
+
+        else
+            % === 当前是中点 (Midpoint) ===
+            % 存储中点采样值，用于下一次的误差计算
+            mid_I = y_I_sample;
+            mid_Q = y_Q_sample;
+        end
+
+        % 更新环路滤波器输出 (每个判决点更新一次)
+        if isStrobeSample
+            wFilterLast = wFilter;
+        end
+
+        % 切换状态: 判决点 -> 中点, 中点 -> 判决点
+        isStrobeSample = ~isStrobeSample;
+        
+        % NCO相位减去已处理的0.5个符号周期，并为下一次可能的触发更新"旧"相位
+        ncoPhase_old = 0.5; 
+        ncoPhase = ncoPhase - 0.5;
+    end
+end
+
+%% 输出复数结果
+s_qpsk_sto_sync = y_I_Array + 1j * y_Q_Array;
+% GardnerSymbolSync脚本代码结束
 
 % 应用载波同步
 fc = 0;     % 预估频偏
 ki = 0.001; % 积分增益
 kp = 0.01;  % 比例增益
-s_qpsk_cfo_sync = QPSKFrequencyCorrectPLL(s_qpsk_sto_sync, fc, config.fs, ki, kp);
+
+% 使用脚本形式的QPSKFrequencyCorrectPLL代码
+% QPSKFrequencyCorrectPLL脚本代码开始
+x = s_qpsk_sto_sync;
+fs = config.fs;
+
+%% 全局变量
+theta = 0;
+theta_integral = 0;
+
+s_qpsk_cfo_sync = zeros(1,length(x));
+error_signal = zeros(1,length(x));
+
+%% 主循环
+for m=1:length(x)
+   % 应用初始相位到x
+   x(m) = x(m) * exp(-1j*(theta));
+    
+   % 判断最近星座点
+   desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j;
+   
+   % 计算相位差
+   angleErr = angle(x(m)*conj(desired_point));
+   
+   % 二阶环路滤波器
+   theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
+   theta_integral = theta_integral + angleErr;
+   
+   % 累积相位误差
+   theta = theta + theta_delta + 2 * pi * fc / fs;
+   
+   % 输出当前频偏纠正信号
+   s_qpsk_cfo_sync(m) = x(m);
+   error_signal(m) = angleErr;
+end
+% QPSKFrequencyCorrectPLL脚本代码结束
 
 % 由于FrameSync函数依赖其他辅助函数，我们主要测试其逻辑结构
 fprintf('FrameSync函数结构验证:\n');
@@ -1114,18 +1889,12 @@ fprintf('4. 帧提取检查: 函数会提取匹配位置的完整帧数据\n');
 fprintf('5. 输出格式检查: 函数返回同步后的帧数据\n');
 
 % 验证辅助函数SymbolToIdeaSymbol的存在性
-if exist('SymbolToIdeaSymbol', 'file') == 2
-    fprintf('辅助函数SymbolToIdeaSymbol存在验证通过\n');
-else
-    fprintf('辅助函数SymbolToIdeaSymbol存在验证失败\n');
-end
+% SymbolToIdeaSymbol函数实现已内联到脚本中
+fprintf('辅助函数SymbolToIdeaSymbol实现已内联到脚本中\n');
 
 % 验证辅助函数ByteArrayToBinarySourceArray的存在性
-if exist('ByteArrayToBinarySourceArray', 'file') == 2
-    fprintf('辅助函数ByteArrayToBinarySourceArray存在验证通过\n');
-else
-    fprintf('辅助函数ByteArrayToBinarySourceArray存在验证失败\n');
-end
+% ByteArrayToBinarySourceArray函数实现已内联到脚本中
+fprintf('辅助函数ByteArrayToBinarySourceArray实现已内联到脚本中\n');
 
 % 验证FrameSync函数处理真实数据的能力
 % 检查输入数据是否为复数信号
@@ -1180,7 +1949,6 @@ fprintf('  - 数据类型验证通过：输入为复数信号\n');
 
 %% 解扰模块实现代码
 % lib/FrameScramblingModule.m
-function [I_array,Q_array] = FrameScramblingModule(s_symbols)
 %% 获取x的形状
 [rows,columns] = size(s_symbols);
 x = zeros(rows,columns-32);
@@ -1236,10 +2004,8 @@ for m=1:rows
    end
 end
 
-end
-
+%% ScramblingModule实现代码
 % lib/ScramblingModule.m
-function scrambled_data = ScramblingModule(data,InPhase)
 %% 定义加扰解扰逻辑
 N = length(data);
 scrambled_data = zeros(1,N);
@@ -1253,8 +2019,6 @@ for m=1:N
     end
     
     InPhase(1) = scrambled_feedback;
-end
-
 end
 
 %% 关键实现细节
@@ -1295,23 +2059,234 @@ if ~exist(config.inputDataFilename, 'file')
     fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
 end
 
-% 加载真实信号数据
-s_raw = SignalLoader(config.inputDataFilename, 1, 10000);  % 加载前10000个数据点
+% 加载真实信号数据（使用脚本形式的SignalLoader代码）
+% SignalLoader脚本代码开始
+filename = config.inputDataFilename;
+pointStart = 1;
+Nread = 10000;
 
-% 应用RRC滤波器预处理
-s_qpsk = RRCFilterFixedLen(config.fb, config.fs, s_raw, config.rollOff, 'rrc');
+% 打开文件
+fid = fopen(filename, 'rb');
+
+% 设置搜索指针
+fseek(fid, (pointStart - 1) * 8, 'bof');
+
+% 读取数据
+if Nread == -1
+    % 读取文件中所有剩余数据
+    raw = fread(fid, [2, Inf], 'int16');
+else
+    % 读取指定数量的数据
+    raw = fread(fid, [2, Nread], 'int16');
+end
+
+s_raw = complex(raw(1,:), raw(2,:));
+
+%关闭指针
+fclose(fid);
+% SignalLoader脚本代码结束
+
+% 应用RRC滤波器预处理（使用脚本形式的RRCFilterFixedLen代码）
+% RRCFilterFixedLen脚本代码开始
+fb = config.fb;
+fs = config.fs;
+x = s_raw;
+alpha = config.rollOff;
+mode = 'rrc';
+
+% 参数
+span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
+sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+
+% 生成滤波器系数
+% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
+if strcmpi(mode, 'rrc')
+    % Root Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'sqrt');
+elseif strcmpi(mode, 'rc')
+    % Raised Cosine
+    h = rcosdesign(alpha, span, sps, 'normal');
+else
+    error('Unsupported mode. Use ''rrc'' or ''rc''.');
+end
+
+% 卷积，'same' 参数使输出长度与输入长度一致
+s_qpsk = conv(x, h, 'same');
+% RRCFilterFixedLen脚本代码结束
 
 % 应用Gardner定时同步
 B_loop = 0.0001;  % 归一化环路带宽
 zeta = 0.707;     % 阻尼系数
 sps = floor(config.fs / config.fb);  % 每符号采样数
-s_qpsk_sto_sync = GardnerSymbolSync(s_qpsk, sps, B_loop, zeta);
+
+% 使用脚本形式的GardnerSymbolSync代码
+% GardnerSymbolSync脚本代码开始
+s_qpsk_input = s_qpsk;
+
+%% 参数配置
+Wn = 2 * pi * B_loop / sps;  % 环路自然频率
+
+% 环路滤波器(PI)系数
+c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
+c2 = (4 * Wn^2)      / (1 + 2 * zeta * Wn + Wn^2);
+
+%% 初始化状态
+ncoPhase = 0;                    % NCO相位累加器
+wFilterLast = 1 / sps;           % 初始定时步进 (每个输入样本代表 1/sps 个符号)
+
+% 算法状态变量
+isStrobeSample = false;          % 状态标志: false->中点采样, true->判决点采样
+timeErrLast = 0;                 % 上一次的定时误差
+wFilter = wFilterLast;           % 环路滤波器输出
+
+% 数据存储
+y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
+mid_I = 0; mid_Q = 0;             % 中点采样值
+y_I_Array = []; y_Q_Array = [];  % 输出数组
+
+%% Gardner 同步主循环
+for m = 6 : length(s_qpsk_input)-3
+    % NCO相位累加 (每个输入样本前进 wFilterLast 的相位)
+    % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
+    ncoPhase_old = ncoPhase;
+    ncoPhase = ncoPhase + wFilterLast;
+
+    % 使用 while 循环处理
+    while ncoPhase >= 0.5
+        % --- 关键修复 1: 正确计算插值时刻 (mu) ---
+        % 计算过冲点在当前采样区间的归一化位置
+        mu = (0.5 - ncoPhase_old) / wFilterLast;
+        base_idx = m - 1;
+
+        % --- 使用Farrow 立方插值器 (内联实现) ---
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = real(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_I_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_I_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        % Farrow 结构三阶(Cubic)插值器
+        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
+        index = base_idx;
+        x = imag(s_qpsk_input);
+        u = mu;
+        if index < 2 || index > length(x) - 2
+            y_Q_sample = 0;
+        else
+            x_m1 = x(index - 1);
+            x_0  = x(index);
+            x_p1 = x(index + 1);
+            x_p2 = x(index + 2);
+            
+            % Farrow 结构系数
+            c0 = x_0;
+            c1 = 0.5 * (x_p1 - x_m1);
+            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            
+            y_Q_sample = ((c3 * u + c2) * u + c1) * u + c0;
+        end
+        
+        if isStrobeSample
+            % === 当前是判决点 (Strobe Point) ===
+
+            % --- Gardner 误差计算 ---
+            % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
+            timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
+
+            % 环路滤波器
+            wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
+
+            % 存储状态用于下次计算
+            timeErrLast = timeErr;
+            y_last_I = y_I_sample;
+            y_last_Q = y_Q_sample;
+
+            % 将判决点采样存入结果数组
+            y_I_Array(end+1) = y_I_sample;
+            y_Q_Array(end+1) = y_Q_sample;
+
+        else
+            % === 当前是中点 (Midpoint) ===
+            % 存储中点采样值，用于下一次的误差计算
+            mid_I = y_I_sample;
+            mid_Q = y_Q_sample;
+        end
+
+        % 更新环路滤波器输出 (每个判决点更新一次)
+        if isStrobeSample
+            wFilterLast = wFilter;
+        end
+
+        % 切换状态: 判决点 -> 中点, 中点 -> 判决点
+        isStrobeSample = ~isStrobeSample;
+        
+        % NCO相位减去已处理的0.5个符号周期，并为下一次可能的触发更新"旧"相位
+        ncoPhase_old = 0.5; 
+        ncoPhase = ncoPhase - 0.5;
+    end
+end
+
+%% 输出复数结果
+s_qpsk_sto_sync = y_I_Array + 1j * y_Q_Array;
+% GardnerSymbolSync脚本代码结束
 
 % 应用载波同步
 fc = 0;     % 预估频偏
 ki = 0.001; % 积分增益
 kp = 0.01;  % 比例增益
-s_qpsk_cfo_sync = QPSKFrequencyCorrectPLL(s_qpsk_sto_sync, fc, config.fs, ki, kp);
+
+% 使用脚本形式的QPSKFrequencyCorrectPLL代码
+% QPSKFrequencyCorrectPLL脚本代码开始
+x = s_qpsk_sto_sync;
+fs = config.fs;
+
+%% 全局变量
+theta = 0;
+theta_integral = 0;
+
+s_qpsk_cfo_sync = zeros(1,length(x));
+error_signal = zeros(1,length(x));
+
+%% 主循环
+for m=1:length(x)
+   % 应用初始相位到x
+   x(m) = x(m) * exp(-1j*(theta));
+    
+   % 判断最近星座点
+   desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j;
+   
+   % 计算相位差
+   angleErr = angle(x(m)*conj(desired_point));
+   
+   % 二阶环路滤波器
+   theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
+   theta_integral = theta_integral + angleErr;
+   
+   % 累积相位误差
+   theta = theta + theta_delta + 2 * pi * fc / fs;
+   
+   % 输出当前频偏纠正信号
+   s_qpsk_cfo_sync(m) = x(m);
+   error_signal(m) = angleErr;
+end
+% QPSKFrequencyCorrectPLL脚本代码结束
 
 % 验证函数存在性
 if exist('FrameScramblingModule', 'file') == 2
@@ -1340,8 +2315,26 @@ test_Q_bits = double(test_Q_bits);
 % 使用I路数据测试ScramblingModule函数
 initial_phase = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1];  % I路初相
 
-% 执行加扰
-scrambled_result = ScramblingModule(test_I_bits, initial_phase);
+% 执行加扰（使用脚本形式的ScramblingModule代码）
+% ScramblingModule脚本代码开始
+data = test_I_bits;
+InPhase = initial_phase;
+
+%% 定义加扰解扰逻辑
+N = length(data);
+scrambled_result = zeros(1,N);
+for m=1:N
+    scrambled_result(m) = bitxor(InPhase(15),data(m));
+    scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+    
+    % 更新模拟移位寄存器
+    for n=0:13
+       InPhase(15-n) = InPhase(14-n);
+    end
+    
+    InPhase(1) = scrambled_feedback;
+end
+% ScramblingModule脚本代码结束
 
 % 验证输出长度
 if length(scrambled_result) == length(test_I_bits)
@@ -1359,7 +2352,27 @@ end
 
 % 验证加扰/解扰的可逆性
 % 对加扰后的数据再次进行解扰，应该得到原始数据
-descrambled_result = ScramblingModule(scrambled_result, initial_phase);
+
+% 执行解扰（使用脚本形式的ScramblingModule代码）
+% ScramblingModule脚本代码开始
+data = scrambled_result;
+InPhase = initial_phase;
+
+%% 定义加扰解扰逻辑
+N = length(data);
+descrambled_result = zeros(1,N);
+for m=1:N
+    descrambled_result(m) = bitxor(InPhase(15),data(m));
+    scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+    
+    % 更新模拟移位寄存器
+    for n=0:13
+       InPhase(15-n) = InPhase(14-n);
+    end
+    
+    InPhase(1) = scrambled_feedback;
+end
+% ScramblingModule脚本代码结束
 
 % 检查解扰后的数据是否与原始数据一致
 if isequal(descrambled_result, test_I_bits)
@@ -1374,7 +2387,7 @@ fprintf('  - ScramblingModule函数功能验证通过\n');
 fprintf('  - 加扰/解扰可逆性验证通过\n');
 
 %% 测试执行与验证
-% 1. 运行测试函数：在MATLAB命令窗口执行 test_FrameScramblingModule()
+% 1. 以上测试代码用于验证解扰模块的正确性
 % 2. 验证输出：检查函数存在性和基本功能
 % 3. 数据完整性：验证解扰后数据的完整性和正确性
 % 4. 错误处理：测试IQ路交换情况下的自动纠正功能
@@ -1481,7 +2494,7 @@ fprintf('  - 加扰/解扰可逆性验证通过\n');
 
 % 3. 运行与分析：
 %    *   重新运行主脚本。
-%    *   在MATLAB命令窗口，您应该能看到类似下面的输出：
+%    *   在MATLAB实时编辑器中，您应该能看到类似下面的输出：
 
 % ```
 % --- AOS Frame Header Decoded ---
