@@ -195,6 +195,7 @@ disp(config.QBytesFilename);
 % lib/SignalLoader.m
 % 首先配置数据文件参数
 config.inputDataFilename = "data/small_sample_256k.bin"; % 数据文件路径
+config.sourceSampleRate = 500e6; % 原始信号采样率
 
 % 检查数据文件是否存在，不存在则创建模拟数据
 if ~exist(config.inputDataFilename, 'file')
@@ -216,7 +217,7 @@ end
 % 设置读取参数
 filename = config.inputDataFilename;
 pointStart = 1;
-Nread = 10000;
+Nread = -1;
 
 % 打开文件
 fid = fopen(filename, 'rb');
@@ -238,7 +239,84 @@ s_raw = complex(raw(1,:), raw(2,:));
 %关闭指针
 fclose(fid);
 
-%% 关键实现细节
+%% 结果验证与输出
+% 检查信号加载是否成功
+if ~isempty(s_raw) && isnumeric(s_raw) && isreal(s_raw) == false
+    fprintf('✓ 信号加载成功！\n');
+    fprintf('  - 加载数据点数：%d\n', length(s_raw));
+    fprintf('  - 数据类型：%s\n', class(s_raw));
+    fprintf('  - 实部范围：[%.2f, %.2f]\n', min(real(s_raw)), max(real(s_raw)));
+    fprintf('  - 虚部范围：[%.2f, %.2f]\n', min(imag(s_raw)), max(imag(s_raw)));
+    fprintf('  - 平均功率：%.2f\n', mean(abs(s_raw).^2));
+else
+    fprintf('✗ 信号加载失败！\n');
+    fprintf('  - 错误：数据为空或格式不正确\n');
+end
+
+%% 功率谱密度分析
+% 计算并绘制原始信号的功率谱密度
+figure('Name', '原始信号功率谱密度', 'Position', [100, 100, 800, 600]);
+
+% 计算功率谱密度
+[pxx, f] = pwelch(s_raw, [], [], [], config.sourceSampleRate, 'centered');
+
+% 绘制功率谱密度
+subplot(2,1,1);
+plot(f/1e6, 10*log10(pxx), 'b', 'LineWidth', 1.5);
+grid on;
+title('原始信号功率谱密度（线性坐标）');
+xlabel('频率 (MHz)');
+ylabel('功率谱密度 (dB/Hz)');
+xlim([-config.sourceSampleRate/2e6, config.sourceSampleRate/2e6]);
+
+% 绘制频谱瀑布图
+subplot(2,1,2);
+spectrogram(s_raw, 1024, 512, 1024, config.sourceSampleRate, 'yaxis');
+title('原始信号频谱瀑布图');
+colorbar;
+
+%% 信号质量分析
+% 计算信号统计特性
+fprintf('\n=== 信号质量分析 ===\n');
+fprintf('信号长度：%d 点\n', length(s_raw));
+fprintf('采样率：%.2f MHz\n', config.sourceSampleRate/1e6);
+fprintf('信号持续时间：%.3f 秒\n', length(s_raw)/config.sourceSampleRate);
+
+% 计算信号功率
+signal_power = mean(abs(s_raw).^2);
+fprintf('信号平均功率：%.2f\n', signal_power);
+
+% 计算信号带宽（基于-3dB带宽）
+[pxx, f] = pwelch(s_raw, [], [], [], config.sourceSampleRate, 'centered');
+pxx_db = 10*log10(pxx);
+max_power = max(pxx_db);
+threshold_3db = max_power - 3;
+
+% 找到-3dB带宽
+indices = find(pxx_db >= threshold_3db);
+if ~isempty(indices)
+    bandwidth_3db = (f(indices(end)) - f(indices(1))) / 1e6;
+    fprintf('-3dB带宽：%.2f MHz\n', bandwidth_3db);
+else
+    fprintf('无法确定-3dB带宽\n');
+end
+
+% 计算信号峰均比
+peak_power = max(abs(s_raw).^2);
+papr = peak_power / signal_power;
+fprintf('峰均比（PAPR）：%.2f dB\n', 10*log10(papr));
+
+% 计算I/Q路平衡性
+I_component = real(s_raw);
+Q_component = imag(s_raw);
+I_power = mean(I_component.^2);
+Q_power = mean(Q_component.^2);
+IQ_imbalance = abs(I_power - Q_power) / (I_power + Q_power) * 100;
+fprintf('I/Q路功率不平衡度：%.2f%%\n', IQ_imbalance);
+
+fprintf('=====================\n\n');
+
+% 关键实现细节
 % 1. 文件指针定位：fseek(fid, (pointStart - 1) * 8, 'bof')中乘以8是因为每个复数点包含两个int16值（I和Q），每个int16占2字节，总共4字节。
 % 2. 数据读取：fread(fid, [2, Inf], 'int16')将数据按2行N列的方式读取，第一行是I路数据，第二行是Q路数据。
 % 3. 复数构造：complex(raw(1,:), raw(2,:))将I路和Q路数据组合成复数信号。
