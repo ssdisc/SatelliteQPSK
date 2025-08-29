@@ -1195,56 +1195,248 @@ fprintf('\n变量传递：sync_output -> 下一模块 (载波同步)\n');
 % *   这里的环路带宽 Bn 被设置为 0.02，它是一个归一化值，通常相对于采样率。
 %     这是一个中等带宽的环路，能够在较短时间内锁定，同时保持较好的噪声抑制性能。
 
-%% 代码实现详解
-% 在 lib/QPSKFrequencyCorrectPLL.m 中，实现了混合式PLL的核心逻辑。
-
 %% 载波同步实现代码
-% lib/QPSKFrequencyCorrectPLL.m
-%% 全局变量
-theta = 0;
-theta_integral = 0;
+% 接收5.3模块的输出信号
+x = sync_output;  % 使用Gardner定时同步后的信号作为输入
 
-y = zeros(1,length(x));
-err = zeros(1,length(x));
+% PLL参数配置
+fc = 0;  % 预估的载波频率偏移（Hz）
+fs = fb;  % 符号率作为PLL的采样率
+pll_bandwidth = 0.02;  % 归一化环路带宽
+pll_damping = 0.707;  % 阻尼系数
 
-%% 主循环
-for m=1:length(x)
-   % 应用初始相位到x
-   x(m) = x(m) * exp(-1j*(theta));
+fprintf('载波同步PLL参数配置:\n');
+fprintf('  - 输入信号长度: %d 符号\n', length(x));
+fprintf('  - 预估频偏 fc: %.1f Hz\n', fc);
+fprintf('  - 符号率 fs: %.0f MBaud\n', fs/1e6);
+fprintf('  - 环路带宽: %.3f\n', pll_bandwidth);
+fprintf('  - 阻尼系数: %.3f\n', pll_damping);
+
+% 计算PLL增益参数
+Wn = 2 * pi * pll_bandwidth;  % 归一化自然频率
+kp = 2 * pll_damping * Wn;     % 比例增益
+ki = Wn^2;                     % 积分增益
+
+fprintf('  - 比例增益 kp: %.6f\n', kp);
+fprintf('  - 积分增益 ki: %.6f\n', ki);
+
+%% PLL主实现
+% 初始化变量
+theta = 0;                    % NCO相位
+theta_integral = 0;           % 积分器状态
+y = zeros(1, length(x));       % 输出信号
+err = zeros(1, length(x));     % 相位误差记录
+
+% 调试变量
+debug_phase = [];             % NCO相位变化
+debug_err = [];               % 相位误差变化
+debug_lock_indicator = [];    % 锁定指示器
+
+fprintf('开始PLL载波同步...\n');
+tic;
+
+% PLL主循环
+for m = 1:length(x)
+    % 应用相位校正
+    corrected_symbol = x(m) * exp(-1j * theta);
     
-   % 判断最近星座点
-   desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j;
-   
-   % 计算相位差
-   angleErr = angle(x(m)*conj(desired_point));
-   
-   % 二阶环路滤波器
-   theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
-   theta_integral = theta_integral + angleErr;
-   
-   % 累积相位误差
-   theta = theta + theta_delta + 2 * pi * fc / fs;
-   
-   % 输出当前频偏纠正信号
-   y(m) = x(m);
-   err(m) = angleErr;
+    % 硬判决：确定最近的理想星座点
+    real_part = real(corrected_symbol);
+    imag_part = imag(corrected_symbol);
+    
+    % QPSK硬判决
+    if real_part > 0 && imag_part > 0
+        desired_point = 1 + 1j;    % 第一象限
+    elseif real_part < 0 && imag_part > 0
+        desired_point = -1 + 1j;   % 第二象限
+    elseif real_part < 0 && imag_part < 0
+        desired_point = -1 - 1j;   % 第三象限
+    else
+        desired_point = 1 - 1j;    % 第四象限
+    end
+    
+    % 计算相位误差（使用angle函数精确计算）
+    phase_error = angle(corrected_symbol * conj(desired_point));
+    
+    % 二阶环路滤波器（PI控制器）
+    theta_delta = kp * phase_error + ki * theta_integral;
+    
+    % 更新积分器
+    theta_integral = theta_integral + phase_error;
+    
+    % 更新NCO相位（包含前馈频率补偿）
+    theta = theta + theta_delta + 2 * pi * fc / fs;
+    
+    % 限制相位在[0, 2pi]范围内
+    theta = mod(theta, 2 * pi);
+    
+    % 存储结果
+    y(m) = corrected_symbol;
+    err(m) = phase_error;
+    
+    % 记录调试信息
+    debug_phase(end+1) = theta;
+    debug_err(end+1) = phase_error;
+    
+    % 计算锁定指示器（相位误差的滑动平均）
+    if m >= 100
+        lock_indicator = mean(abs(err(m-99:m)));
+        debug_lock_indicator(end+1) = lock_indicator;
+    else
+        debug_lock_indicator(end+1) = mean(abs(err(1:m)));
+    end
+    
+    % 显示进度
+    if mod(m, 1000) == 0
+        fprintf('  处理进度: %d/%d (%.1f%%)\n', m, length(x), m/length(x)*100);
+    end
 end
 
-%% 关键实现细节
-% 1. 相位校正：x(m) = x(m) * exp(-1j*(theta)) 实现相位校正
-% 2. 硬判决：desired_point = 2*(real(x(m)) > 0)-1 + (2*(imag(x(m)) > 0)-1) * 1j 实现最近星座点判决
-% 3. 相位误差计算：angleErr = angle(x(m)*conj(desired_point)) 精确计算相位差
-% 4. PI控制器：theta_delta = kp * angleErr + ki * (theta_integral + angleErr) 实现环路滤波
-% 5. NCO更新：theta = theta + theta_delta + 2 * pi * fc / fs 更新总相位
+pll_time = toc;
+fprintf('✓ PLL载波同步完成！耗时: %.3f 秒\n', pll_time);
 
-%% 复现与观察:
-% 1. 在调试模式下，执行到载波同步行 (s_qpsk_cfo_sync = QPSKFrequencyCorrectPLL(...))。
-% 2. 观察星座图 (决定性的一步): 执行完此行后，在命令窗口绘制星座图。
-%    scatterplot(s_qpsk_cfo_sync);
-%    title('载波同步后的星座图');
-%    grid on;
-%    此时，您应该能看到一个清晰、稳定的QPSK星座图。四个点簇分别紧密地聚集在理想位置附近。
-%    这标志着接收机的同步过程已圆满成功！
+% 输出结果
+pll_output = y;
+
+%% 5.4.2 PLL工作过程可视化
+% 绘制PLL算法的工作过程，帮助理解其内部机制
+
+% 图1: NCO相位变化
+figure('Name', 'PLL工作过程分析', 'Position', [100, 100, 1200, 800]);
+subplot(2,2,1);
+plot(debug_phase, 'b-', 'LineWidth', 1);
+title('NCO相位变化');
+xlabel('符号索引');
+ylabel('相位 (弧度)');
+grid on;
+
+% 图2: 相位误差变化
+subplot(2,2,2);
+plot(debug_err, 'r-', 'LineWidth', 1);
+title('相位误差变化');
+xlabel('符号索引');
+ylabel('相位误差 (弧度)');
+grid on;
+
+% 图3: 锁定指示器
+subplot(2,2,3);
+plot(debug_lock_indicator, 'g-', 'LineWidth', 1.5);
+title('锁定指示器 (滑动平均)');
+xlabel('符号索引');
+ylabel('平均相位误差');
+grid on;
+ylim([0, max(1, max(debug_lock_indicator)*1.1)]);
+
+% 图4: 相位误差统计
+subplot(2,2,4);
+histogram(debug_err, 50, 'FaceAlpha', 0.7);
+title('相位误差分布');
+xlabel('相位误差 (弧度)');
+ylabel('频次');
+grid on;
+
+sgtitle('PLL载波同步工作过程分析');
+
+%% 5.4.3 载波同步效果对比
+% 绘制载波同步前后的星座图对比
+
+% 输入信号星座图（Gardner同步后）
+figure('Name', '输入信号星座图 (Gardner同步后)', 'Position', [200, 150, 600, 500]);
+scatterplot(x(1:min(5000, length(x))));
+title('输入信号星座图 (Gardner同步后)');
+grid on;
+
+% 输出信号星座图（PLL同步后）
+figure('Name', '输出信号星座图 (PLL载波同步后)', 'Position', [250, 200, 600, 500]);
+scatterplot(pll_output(1:min(5000, length(pll_output))));
+title('输出信号星座图 (PLL载波同步后)');
+grid on;
+
+%% 5.4.4 同步质量分析
+% 分析PLL的同步性能和质量
+
+fprintf('\n=== PLL载波同步质量分析 ===\n');
+
+% 计算统计指标
+final_phase_error_std = std(debug_err(max(1, end-1000):end));
+final_lock_indicator = mean(debug_lock_indicator(max(1, end-1000):end));
+
+fprintf('最终相位误差标准差: %.6f 弧度\n', final_phase_error_std);
+fprintf('最终锁定指示器: %.6f\n', final_lock_indicator);
+
+% 判断同步质量
+if final_lock_indicator < 0.1
+    fprintf('同步质量: 优秀 (锁定指示器 < 0.1)\n');
+elseif final_lock_indicator < 0.3
+    fprintf('同步质量: 良好 (锁定指示器 < 0.3)\n');
+else
+    fprintf('同步质量: 需要优化 (锁定指示器 >= 0.3)\n');
+end
+
+% 计算星座点聚集度
+amplitudes = abs(pll_output);
+amplitude_mean = mean(amplitudes);
+amplitude_std = std(amplitudes);
+concentration = 1 - amplitude_std / amplitude_mean;
+
+fprintf('星座点聚集度: %.3f\n', concentration);
+
+% 绘制收敛过程
+figure('Name', 'PLL收敛过程', 'Position', [300, 200, 800, 600]);
+window_size = min(500, floor(length(debug_err)/10));
+moving_avg = movmean(abs(debug_err), window_size);
+
+plot(moving_avg, 'b-', 'LineWidth', 2);
+title('PLL收敛过程 (相位误差滑动平均)');
+xlabel('符号索引');
+ylabel('平均相位误差');
+grid on;
+
+% 添加参考线
+yline(0.1, 'g--', '优秀阈值');
+yline(0.3, 'r--', '需要优化阈值');
+
+fprintf('============================\n\n');
+
+%% 关键实现细节
+% 1. 相位校正：corrected_symbol = x(m) * exp(-1j * theta) 实现相位校正
+% 2. 硬判决：使用象限判断确定最近的理想星座点
+% 3. 相位误差计算：phase_error = angle(corrected_symbol * conj(desired_point)) 精确计算相位差
+% 4. PI控制器：theta_delta = kp * phase_error + ki * theta_integral 实现环路滤波
+% 5. NCO更新：theta = theta + theta_delta + 2 * pi * fc / fs 更新总相位
+% 6. 锁定指示器：通过相位误差的滑动平均评估锁定状态
+
+%% 5.4.5 实践指导
+% 本节为读者提供PLL调试和优化的实践指导
+
+fprintf('=== 5.4节实践指导 ===\n');
+fprintf('1. 观察NCO相位变化：了解PLL如何跟踪载波相位\n');
+fprintf('2. 分析相位误差变化：观察PLL的收敛过程\n');
+fprintf('3. 检查锁定指示器：评估PLL的锁定质量\n');
+fprintf('4. 对比星座图变化：直观感受载波同步的效果\n');
+fprintf('\n建议实验：\n');
+fprintf('- 尝试修改fc参数（如1000, -1000）观察频率补偿效果\n');
+fprintf('- 调整pll_bandwidth（如0.01, 0.05）观察收敛速度变化\n');
+fprintf('- 修改pll_damping（如0.5, 1.0）观察系统响应特性\n');
+fprintf('- 在不同信噪比条件下测试PLL的鲁棒性\n');
+
+%% 5.4.6 模块技术总结
+% 本模块的技术要点总结
+
+fprintf('\n=== 5.4节技术总结 ===\n');
+fprintf('✓ 混合PLL结构：结合前馈频率补偿和反馈相位锁定\n');
+fprintf('✓ 精确相位误差计算：使用angle函数而非imag近似\n');
+fprintf('✓ 二阶环路滤波器：PI控制器实现最优跟踪性能\n');
+fprintf('✓ 实时锁定指示：通过相位误差统计评估同步质量\n');
+fprintf('✓ 参数化设计：环路带宽和阻尼系数可调\n');
+fprintf('\n核心公式回顾：\n');
+fprintf('- 相位误差: e[n] = angle{y[n] * conj(d[n])}\n');
+fprintf('- PI控制器: θ_Δ = kp*e[n] + ki*∫e[n]dt\n');
+fprintf('- NCO更新: θ[n+1] = θ[n] + θ_Δ + 2πfc/fs\n');
+fprintf('- 相位校正: y_out[n] = y_in[n] * exp(-jθ[n])\n');
+
+% 后续模块可以直接使用变量pll_output作为输入
+fprintf('\n变量传递：pll_output -> 下一模块 (相位模糊恢复与帧同步)\n');
 
 %% 5.5 模块详解: 相位模糊恢复、帧同步与解扰
 % 载波同步成功后，我们得到了清晰的星座图，但还面临三个紧密相关的问题：
