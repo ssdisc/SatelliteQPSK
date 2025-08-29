@@ -1014,12 +1014,28 @@ if ~isempty(debug_timeErr) && length(debug_timeErr) > 10
     % 计算滑动平均，观察收敛趋势
     % 动态选择滑动平均窗口：随序列长度增长而增大，但有上限，保证平滑且可视化
     window = min(1000, max(50, floor(length(debug_timeErr)/100)));
-    moving_avg = movmean(abs(debug_timeErr), window);
-    plot(moving_avg);
-    title('时序误差收敛过程 (滑动平均)');
+    moving_abs = movmean(abs(debug_timeErr), window);
+    moving_signed_mean = movmean(debug_timeErr, window);
+
+    % 同图绘制有符号均值和绝对值滑动平均，便于对比
+    plot(moving_abs, '-b'); hold on;
+    plot(moving_signed_mean, '-r'); hold off;
+    legend({'|e| (滑动平均)','e (有符号滑动平均)'}, 'Location','best');
+    title('时序误差收敛过程 (滑动平均，含有符号均值)');
     xlabel('符号索引');
-    ylabel('|时序误差| (滑动平均)');
+    ylabel('时序误差 (滑动平均)');
     grid on;
+
+    % 计算并打印稳态统计量（取最后1/10段作为稳态估计）
+    N = length(debug_timeErr);
+    tailN = max(50, floor(N/10));
+    steady_tail = debug_timeErr(max(1,N-tailN+1):N);
+    steady_mean = mean(steady_tail);
+    steady_std = std(steady_tail);
+    fprintf('\n[诊断] 时序误差稳态统计 (最后 %d 个样本):\n', tailN);
+    fprintf('  - 有符号均值 (偏置): %.6e\n', steady_mean);
+    fprintf('  - 标准差 (抖动水平): %.6e\n', steady_std);
+    fprintf('  - 绝对值滑动平均末值: %.6e\n', moving_abs(end));
 end
 sgtitle('Gardner算法内部工作过程可视化');
 
