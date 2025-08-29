@@ -609,14 +609,16 @@ ylabel('功率谱密度 (dB/Hz)');
 
 % 星座图对比
 subplot(2,2,3);
-scatterplot(s_qpsk(1:1000)); % 只显示前1000个样本以提高显示速度
+plot(real(s_qpsk(1:1000)), imag(s_qpsk(1:1000)), 'b.', 'MarkerSize', 8);
 title('RRC滤波前的星座图');
 axis equal;
+grid on;
 
 subplot(2,2,4);
-scatterplot(s_rrc_filtered(1:1000)); % 只显示前1000个样本以提高显示速度
+plot(real(s_rrc_filtered(1:1000)), imag(s_rrc_filtered(1:1000)), 'r.', 'MarkerSize', 8);
 title('RRC滤波后的星座图');
 axis equal;
+grid on;
 
 sgtitle('RRC匹配滤波器效果对比');
 
