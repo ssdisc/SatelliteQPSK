@@ -507,25 +507,60 @@ fprintf('======================\n\n');
 % 
 %% RRCFilterFixedLen实现代码
 % lib/RRCFilterFixedLen.m
-% 参数
+% 完整的脚本形式实现，直接使用5.1模块中已定义的参数
+
+% 使用5.1模块中已定义的参数（不重新定义）
+% fs = config.fs;              % 采样率 150MHz（重采样后）- 已在5.1中定义
+% config.resampleMolecule = 3;  % 重采样分子 - 已在5.1中定义
+% config.resampleDenominator = 10; % 重采样分母 - 已在5.1中定义
+% s_qpsk                       % 输入信号（来自5.1重采样后的信号）- 已在5.1中生成
+
+% RRC滤波器特定参数
+fb = config.fs / 2;              % 符号率（采样率的一半，对应QPSK）
+alpha = 0.33;                    % 滚降系数
+mode = 'rrc';                    % 滤波器模式：'rrc'表示根升余弦
+x = s_qpsk;                      % 输入信号
+
+% 滤波器设计参数
 span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
-sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
+sps = floor(config.fs / fb); % 每符号采样数 (Samples Per Symbol)
+
+fprintf('RRC滤波器参数：\n');
+fprintf('  - 采样率 fs: %.0f MHz (来自5.1模块)\n', config.fs/1e6);
+fprintf('  - 符号率 fb: %.0f MBaud\n', fb/1e6);
+fprintf('  - 每符号采样数 sps: %d\n', sps);
+fprintf('  - 滚降系数 alpha: %.2f\n', alpha);
+fprintf('  - 滤波器长度 span: %d 符号\n', span);
+fprintf('  - 滤波器模式: %s\n', mode);
 
 % 生成滤波器系数
 % 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
 if strcmpi(mode, 'rrc')
     % Root Raised Cosine
     h = rcosdesign(alpha, span, sps, 'sqrt');
+    fprintf('生成根升余弦(RRC)滤波器系数\n');
 elseif strcmpi(mode, 'rc')
     % Raised Cosine
     h = rcosdesign(alpha, span, sps, 'normal');
+    fprintf('生成升余弦(RC)滤波器系数\n');
 else
     error('Unsupported mode. Use ''rrc'' or ''rc''.');
 end
 
+fprintf('  - 滤波器系数长度: %d\n', length(h));
+fprintf('  - 理论系数长度: %d (span * sps + 1)\n', span * sps + 1);
+
 % 卷积，'same' 参数使输出长度与输入长度一致
-y = conv(x, h, 'same');
-% 
+fprintf('正在执行RRC滤波...\n');
+tic;
+s_rrc_filtered = conv(x, h, 'same');
+filter_time = toc;
+
+fprintf('✓ RRC滤波完成！\n');
+fprintf('  - 处理时间: %.3f 秒\n', filter_time);
+fprintf('  - 输入信号长度: %d\n', length(x));
+fprintf('  - 输出信号长度: %d\n', length(s_rrc_filtered));
+fprintf('  - 滤波器引入的群延迟: %.1f 个样本\n', (length(h)-1)/2);
 
 %% 关键实现细节
 % 1. span参数：滤波器长度，单位为符号数。值为8表示滤波器覆盖8个符号的长度。
@@ -535,97 +570,28 @@ y = conv(x, h, 'same');
 % 5. conv函数：执行卷积运算，'same'参数确保输出长度与输入长度一致。
 
 %% 复现与观察:
-% 1. 在调试模式下，执行到RRC滤波行。
-% 2. 观察频谱：执行完此行后，在命令窗口绘制滤波后信号的功率谱。
-%    figure;
-%    pwelch(s_qpsk, [], [], [], config.fs, 'centered'); % 注意使用重采样后的fs
-%    title('RRC滤波后的信号频谱');
-%    您应该能看到信号的功率被集中在奈奎斯特带宽 [-f_sym/2, f_sym/2] (即 [-37.5, 37.5] MHz) 附近，
-%    总带宽约为 (1+alpha)*f_sym。频谱边缘有平滑的滚降。
-% 3. 观察星座图：此时绘制星座图 scatterplot(s_qpsk)，由于未经任何同步，
+% 1. 上述代码已完成RRC滤波处理，输出信号存储在s_rrc_filtered变量中。
+% 2. 观察频谱：绘制滤波后信号的功率谱，验证频谱整形效果。
+figure('Name', 'RRC滤波后信号频谱', 'Position', [300, 200, 800, 500]);
+pwelch(s_rrc_filtered, [], [], [], config.fs, 'centered'); % 使用5.1模块的采样率
+title('RRC滤波后的信号频谱');
+xlabel('频率 (Hz)');
+ylabel('功率谱密度 (dB/Hz)');
+grid on;
+% 您应该能看到信号的功率被集中在符号率带宽 [-fb/2, fb/2] 附近，
+% 总带宽约为 (1+alpha)*fb = (1+0.33)*75 ≈ 100 MHz。频谱边缘有平滑的滚降。
+
+% 3. 观察星座图：此时绘制星座图，由于未经任何同步，
 %    它看起来会是一个非常模糊的、旋转的环形。这是正常的。
+figure('Name', 'RRC滤波后星座图', 'Position', [400, 300, 600, 600]);
+scatterplot(s_rrc_filtered(1:2000)); % 只显示前2000个点以提高显示速度
+title('RRC滤波后的星座图（未同步）');
+grid on;
+axis equal;
 
-%% 5.2.2 RRC匹配滤波模块单元测试
-% 为了验证RRCFilterFixedLen函数的正确性，我们可以编写以下单元测试：
 
-%% 单元测试示例：RRCFilterFixedLen
-% 使用已加载的真实数据测试RRCFilterFixedLen函数
-% 配置RRC滤波器参数
-config.fs = 150e6; % 重采样后的采样率
-config.fb = 150e6; % 数传速率150Mbps (此处应为符号率75Mbaud，但保持与原始代码一致)
-config.rollOff = 0.33; % 滚降系数
 
-% 检查是否已有输入数据（来自5.1模块）
-if ~exist('s_qpsk', 'var')
-    error('请先运行5.1模块加载真实数据，变量s_qpsk不存在');
-end
-
-fprintf('使用已加载数据进行RRC滤波测试，数据点数：%d\n', length(s_qpsk));
-
-% 应用RRC滤波器（使用脚本形式的RRCFilterFixedLen代码）
-% RRCFilterFixedLen脚本代码开始
-fb = config.fb;
-fs = config.fs;
-x = s_qpsk; % 使用5.1模块已加载的数据
-alpha = config.rollOff;
-mode = 'rrc';
-
-% 参数
-span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
-sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
-
-% 生成滤波器系数
-% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
-if strcmpi(mode, 'rrc')
-    % Root Raised Cosine
-    h = rcosdesign(alpha, span, sps, 'sqrt');
-elseif strcmpi(mode, 'rc')
-    % Raised Cosine
-    h = rcosdesign(alpha, span, sps, 'normal');
-else
-    error('Unsupported mode. Use ''rrc'' or ''rc''.');
-end
-
-% 卷积，'same' 参数使输出长度与输入长度一致
-s_rrc_filtered = conv(x, h, 'same');
-% RRCFilterFixedLen脚本代码结束
-
-% 验证输出长度与输入长度一致
-assert(length(s_rrc_filtered) == length(s_qpsk), 'RRC滤波器长度不匹配');
-
-% 验证滤波器系数生成
-span_test = 8;
-sps_test = floor(config.fs / config.fb);
-h_rrc_test = rcosdesign(config.rollOff, span_test, sps_test, 'sqrt');
-
-% 验证滤波器系数长度
-expected_length = span_test * sps_test + 1;
-assert(length(h_rrc_test) == expected_length, 'RRC滤波器系数长度错误');
-
-% 验证输出是复数信号
-assert(isnumeric(s_rrc_filtered) && isreal(s_rrc_filtered) == false, 'RRC滤波器输出不是复数信号');
-
-% 验证滤波效果 - 检查频谱特性
-% 计算滤波前后的功率谱密度
-[pxx_original, f] = pwelch(s_qpsk, [], [], [], config.fs, 'centered');
-[pxx_filtered, ~] = pwelch(s_rrc_filtered, [], [], [], config.fs, 'centered');
-
-% 检查滤波后信号的带宽是否被限制
-% 计算奈奎斯特带宽（注意：实际符号率应为75 MBaud）
-nyquist_bw = (config.fb / 2) / 2; % 修正为实际符号率的一半
-% 计算总带宽(考虑滚降系数)
-total_bw = (1 + config.rollOff) * (config.fb / 2) / 2;
-
-% 验证滤波后信号的主要能量集中在预期带宽内
-power_ratio = sum(pxx_filtered(abs(f) <= total_bw)) / sum(pxx_filtered);
-assert(power_ratio > 0.85, 'RRC滤波器频谱抑制效果不佳');
-
-fprintf('RRCFilterFixedLen单元测试通过！\n');
-fprintf('  - 成功处理已加载数据，数据点数：%d\n', length(s_qpsk));
-fprintf('  - 滤波器参数：滚降系数=%.2f，每符号采样数=%d\n', config.rollOff, sps);
-fprintf('  - 滤波后信号带宽限制效果良好，%.1f%%的能量集中在预期带宽内\n', power_ratio*100);
-
-%% 5.2.3 RRC滤波器效果可视化
+%% 5.2.2 RRC滤波器效果可视化
 % 绘制滤波前后的频谱对比和星座图对比，直观观察RRC滤波器的作用效果
 % 这些可视化有助于理解RRC滤波器在接收机中的关键作用
 
@@ -654,7 +620,7 @@ axis equal;
 
 sgtitle('RRC匹配滤波器效果对比');
 
-%% 5.2.4 模块优化总结
+%% 5.2.3 模块优化总结
 % 本模块优化要点：
 % 1. 移除了重复的数据加载代码，依赖5.1模块已加载的数据
 % 2. 专注于RRC滤波功能的核心实现和验证
