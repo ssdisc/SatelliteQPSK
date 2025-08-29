@@ -643,30 +643,33 @@ fprintf('AGC归一化后信号功率: %.4f\n', agc_power);
 
 % 频谱对比图
 figure;
-subplot(2,2,1);
+subplot(2,1,1);
 pwelch(s_qpsk, [], [], [], config.fs, 'centered');
 title('RRC滤波前的信号频谱');
 ylabel('功率谱密度 (dB/Hz)');
 
-subplot(2,2,2);
+subplot(2,1,2);
 pwelch(s_rrc_filtered, [], [], [], config.fs, 'centered');
 title('RRC滤波后的信号频谱');
 ylabel('功率谱密度 (dB/Hz)');
 
-% 星座图对比
-subplot(2,2,3);
-plot(real(s_rrc_filtered(1:1000)), imag(s_rrc_filtered(1:1000)), 'r.', 'MarkerSize', 8);
-title('RRC滤波后的星座图');
-axis equal;
-grid on;
+sgtitle('RRC滤波器频谱对比');
 
-subplot(2,2,4);
-plot(real(s_qpsk_agc(1:1000)), imag(s_qpsk_agc(1:1000)), 'g.', 'MarkerSize', 8);
-title('AGC归一化后的星座图');
-axis equal;
-grid on;
+% 星座图对比 - 三个独立图形
+% 原始信号星座图
+figure;
+scatterplot(s_qpsk(1:1000));
+title('原始信号星座图');
 
-sgtitle('RRC滤波与AGC归一化效果对比');
+% RRC滤波后星座图
+figure;
+scatterplot(s_rrc_filtered(1:1000));
+title('RRC滤波后星座图');
+
+% AGC归一化后星座图
+figure;
+scatterplot(s_qpsk_agc(1:1000));
+title('AGC归一化后星座图');
 
 %% 5.2.4 模块优化总结
 % 本模块优化要点：
