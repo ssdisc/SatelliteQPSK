@@ -2162,44 +2162,131 @@ end
 % | 43-44 | Spare | 2 | 备用位 |
 % | 45-48 | Frame Count Cycle | 4 | 帧计数周期 |
 
-%% 7. 技术路径详细实现指南
+%% 7. 教程使用指南与实践建议
 
-%% 7.1 路径一：纯MATLAB编程实现（程梓睿方案）
+%% 7.1 MATLAB实时脚本使用方法
+% 本教程采用MATLAB Live Script格式，专为渐进式学习设计
+% 用户可以分模块执行，观察每个步骤的效果，深入理解QPSK接收机原理
 
-%% 7.1.1 实现特色
-% - 完整模块化：24个独立功能模块，每个模块负责特定功能
-% - Farrow插值器：在Gardner符号同步中实现高精度定时恢复
-% - 智能解扰验证：自动检测和纠正IQ路交换问题
+fprintf('=== 7.1 教程使用指南 ===\n');
+fprintf('本教程的设计理念：\n');
+fprintf('  ✓ 渐进式执行：按章节顺序逐步运行，每章都接续前章结果\n');
+fprintf('  ✓ 可视化学习：每个模块都包含丰富的图表和分析\n');
+fprintf('  ✓ 参数调试：关键参数都有详细说明，便于实验和优化\n');
+fprintf('  ✓ 理论结合：将数学公式与MATLAB实现紧密结合\n\n');
 
-%% 7.1.2 关键代码结构
-% 14+2022210532+chengzirui/
-% ├── SatelliteQPSKReceiverTest.m          # 主测试脚本
-% ├── lib/                                 # 核心算法库
-% │   ├── SatelliteQPSKReceiver.m         # 主处理函数
-% │   ├── GardnerSymbolSync.m             # Gardner定时同步
-% │   ├── QPSKFrequencyCorrectPLL.m       # PLL载波同步
-% │   ├── FrameSync.m                     # 帧同步算法
-% │   ├── FrameScramblingModule.m         # 解扰模块
-% │   └── [其他20+算法模块]
-% └── out/                                # 输出结果文件
+%% 7.1.1 分章节执行建议
+fprintf('章节执行顺序：\n');
+fprintf('5.1 → 5.2 → 5.3 → 5.4 → 5.5 → 6.1 → 6.2 → 6.3\n\n');
 
-%% 7.1.3 运行步骤
-% 1. 环境配置：
-%    addpath('student_cases/14+2022210532+chengzirui/lib');  % 添加算法库路径
-% 
-% 2. 数据文件配置：
-%    编辑 SatelliteQPSKReceiverTest.m 文件，修改文件名为你的测试数据路径：
-%    % 必须为int16格式的数据文件
-%    filename = 'data/sample_0611_500MHz_middle.bin';
-% 
-% 3. 运行主程序：
-%    run('student_cases/14+2022210532+chengzirui/SatelliteQPSKReceiverTest.m');
-% 
-% 4. 查看输出结果：
-%    程序运行完成后，在 out/ 目录下会生成：
-%    - IQbytes.txt: IQ字节数据
-%    - unscrambled_hex.txt: 解扰后的十六进制数据  
-%    - Ibytes.txt, Qbytes.txt: I/Q路分离数据
+fprintf('各章节要点：\n');
+fprintf('  5.1 数据加载与重采样：\n');
+fprintf('      - 理解IQ数据格式和重采样原理\n');
+fprintf('      - 观察信号功率谱变化\n');
+fprintf('      - 关键变量：s_raw, s_qpsk\n\n');
+
+fprintf('  5.2 RRC匹配滤波：\n');
+fprintf('      - 理解脉冲成形和匹配滤波\n');
+fprintf('      - 观察频谱整形效果\n');
+fprintf('      - 关键变量：s_rrc_filtered, s_qpsk_agc\n\n');
+
+fprintf('  5.3 Gardner定时同步：\n');
+fprintf('      - 理解定时恢复算法\n');
+fprintf('      - 观察mu值和时序误差变化\n');
+fprintf('      - 关键变量：sync_output\n\n');
+
+fprintf('  5.4 载波同步PLL：\n');
+fprintf('      - 理解锁相环原理\n');
+fprintf('      - 观察星座图锁定过程\n');
+fprintf('      - 关键变量：pll_output\n\n');
+
+fprintf('  5.5 帧同步与解扰：\n');
+fprintf('      - 理解相位模糊恢复\n');
+fprintf('      - 观察解扰验证过程\n');
+fprintf('      - 关键变量：I_array, Q_array\n\n');
+
+fprintf('  6.1-6.3 验证与分析：\n');
+fprintf('      - AOS帧头解析\n');
+fprintf('      - 数据质量评估\n');
+fprintf('      - 系统性能总结\n\n');
+
+%% 7.1.2 实验参数调试指南
+fprintf('=== 7.1.2 关键参数调试建议 ===\n');
+
+fprintf('RRC滤波器参数：\n');
+fprintf('  - 滚降系数alpha: 0.33 (推荐值，可尝试0.2-0.5)\n');
+fprintf('  - 滤波器长度span: 8 (符号数，影响滤波器性能)\n');
+fprintf('  - 调试建议：观察频谱图变化，确保带外抑制效果\n\n');
+
+fprintf('Gardner定时同步参数：\n');
+fprintf('  - 环路带宽B_loop: 0.0001 (窄带设计，可尝试0.0001-0.001)\n');
+fprintf('  - 阻尼系数zeta: 0.707 (最优值，可尝试0.5-1.0)\n');
+fprintf('  - 调试建议：观察mu值收敛和时序误差变化\n\n');
+
+fprintf('PLL载波同步参数：\n');
+fprintf('  - 环路带宽pll_bandwidth: 0.02 (可尝试0.01-0.05)\n');
+fprintf('  - 阻尼系数pll_damping: 0.707 (经典值)\n');
+fprintf('  - 调试建议：观察星座图锁定效果和相位误差\n\n');
+
+%% 7.1.3 常见问题与排查
+fprintf('=== 7.1.3 常见问题排查 ===\n');
+
+fprintf('问题1：没有找到同步帧\n');
+fprintf('  原因：前置同步模块性能不足\n');
+fprintf('  排查：检查Gardner和PLL的收敛情况\n');
+fprintf('  解决：调整环路参数，确保星座图清晰\n\n');
+
+fprintf('问题2：解扰验证位不通过\n');
+fprintf('  原因：相位模糊恢复错误或解扰参数错误\n');
+fprintf('  排查：检查帧同步是否找到正确相位\n');
+fprintf('  解决：确认同步字1ACFFC1D匹配正确\n\n');
+
+fprintf('问题3：帧计数器不连续\n');
+fprintf('  说明：这是正常现象！\n');
+fprintf('  原因：实际数据中帧可能不连续\n');
+fprintf('  判断：以8159-8160验证位为准，不以帧连续性为准\n\n');
+
+%% 7.2 扩展实验建议
+fprintf('=== 7.2 扩展实验建议 ===\n');
+
+fprintf('初级实验：\n');
+fprintf('  1. 尝试不同的滚降系数值，观察频谱变化\n');
+fprintf('  2. 调整Gardner算法的环路带宽，观察收敛速度\n');
+fprintf('  3. 修改PLL参数，观察星座图锁定效果\n\n');
+
+fprintf('中级实验：\n');
+fprintf('  1. 在信号中添加人工噪声，测试系统鲁棒性\n');
+fprintf('  2. 尝试不同的数据文件，观察算法适应性\n');
+fprintf('  3. 分析不同信噪比下的解扰成功率\n\n');
+
+fprintf('高级实验：\n');
+fprintf('  1. 实现自适应环路带宽调整\n');
+fprintf('  2. 添加载波频偏估计算法\n');
+fprintf('  3. 实现多帧数据的统计分析\n\n');
+
+%% 7.3 学习成果评估
+fprintf('=== 7.3 学习成果自评 ===\n');
+
+fprintf('基础理解 (必须掌握)：\n');
+fprintf('  □ 理解IQ数据的含义和存储格式\n');
+fprintf('  □ 掌握重采样的目的和实现方法\n');
+fprintf('  □ 理解RRC滤波器的作用和参数意义\n');
+fprintf('  □ 掌握Gardner算法的基本原理\n');
+fprintf('  □ 理解PLL锁相环的工作机制\n');
+fprintf('  □ 掌握帧同步和解扰的验证方法\n\n');
+
+fprintf('进阶理解 (深入掌握)：\n');
+fprintf('  □ 能够调试和优化各模块参数\n');
+fprintf('  □ 理解各种可视化图表的含义\n');
+fprintf('  □ 掌握AOS帧头结构和解析方法\n');
+fprintf('  □ 能够分析和诊断系统问题\n');
+fprintf('  □ 理解学生案例的成功判断标准\n\n');
+
+fprintf('应用能力 (实践应用)：\n');
+fprintf('  □ 能够处理不同的卫星数据文件\n');
+fprintf('  □ 能够根据实际情况调整系统参数\n');
+fprintf('  □ 能够扩展系统功能和算法\n');
+fprintf('  □ 能够进行系统性能评估和优化\n\n');
 
 %% 8. 总结与展望
 % 本项目通过一系列精心设计的MATLAB模块，并配以此深度解析教程，
