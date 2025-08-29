@@ -770,7 +770,19 @@ title('AGC归一化后星座图');
 % 在 lib/GardnerSymbolSync.m 中，核心逻辑在 for 循环内。
 
 %% Gardner定时同步实现代码
-% lib/GardnerSymbolSync.m
+% 接收5.2节的输出数据
+s_qpsk_input = s_qpsk_agc;  % 使用AGC归一化后的信号作为输入
+
+% Gardner算法参数配置
+B_loop = 0.0001; % 归一化环路带宽 (与学生实现保持一致)
+zeta = 0.707;    % 阻尼系数 (经典最优值)
+
+fprintf('Gardner定时同步参数设置:\n');
+fprintf('  - 环路带宽 B_loop: %.4f\n', B_loop);
+fprintf('  - 阻尼系数 zeta: %.3f\n', zeta);
+fprintf('  - 输入信号长度: %d\n', length(s_qpsk_input));
+
+%% lib/GardnerSymbolSync.m
 %% 参数配置
 Wn = 2 * pi * B_loop / sps;  % 环路自然频率
 
@@ -792,257 +804,14 @@ y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
 mid_I = 0; mid_Q = 0;             % 中点采样值
 y_I_Array = []; y_Q_Array = [];  % 输出数组
 
-%% Gardner 同步主循环
-for m = 6 : length(s_qpsk)-3
-    % NCO相位累加 (每个输入样本前进 wFilterLast 的相位)
-    % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
-    ncoPhase_old = ncoPhase;
-    ncoPhase = ncoPhase + wFilterLast;
+% 调试变量 - 让读者观察算法工作过程
+debug_ncoPhase = [];             % 记录NCO相位变化
+debug_timeErr = [];              % 记录时序误差
+debug_wFilter = [];              % 记录环路滤波器输出
+debug_sample_count = 0;          % 采样计数器
 
-    % 使用 while 循环处理
-    while ncoPhase >= 0.5
-        % --- 关键修复 1: 正确计算插值时刻 (mu) ---
-        % 计算过冲点在当前采样区间的归一化位置
-        mu = (0.5 - ncoPhase_old) / wFilterLast;
-        base_idx = m - 1;
-
-        % --- 使用Farrow 立方插值器 (内联实现) ---
-        % Farrow 结构三阶(Cubic)插值器
-        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
-        index = base_idx;
-        x = real(s_qpsk);
-        u = mu;
-        if index < 2 || index > length(x) - 2
-            y_I_sample = 0;
-        else
-            x_m1 = x(index - 1);
-            x_0  = x(index);
-            x_p1 = x(index + 1);
-            x_p2 = x(index + 2);
-            
-            % Farrow 结构系数
-            c0 = x_0;
-            c1 = 0.5 * (x_p1 - x_m1);
-            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
-            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
-            
-            y_I_sample = ((c3 * u + c2) * u + c1) * u + c0;
-        end
-        
-        % Farrow 结构三阶(Cubic)插值器
-        % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
-        index = base_idx;
-        x = imag(s_qpsk);
-        u = mu;
-        if index < 2 || index > length(x) - 2
-            y_Q_sample = 0;
-        else
-            x_m1 = x(index - 1);
-            x_0  = x(index);
-            x_p1 = x(index + 1);
-            x_p2 = x(index + 2);
-            
-            % Farrow 结构系数
-            c0 = x_0;
-            c1 = 0.5 * (x_p1 - x_m1);
-            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
-            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
-            
-            y_Q_sample = ((c3 * u + c2) * u + c1) * u + c0;
-        end
-        
-        if isStrobeSample
-            % === 当前是判决点 (Strobe Point) ===
-
-            % --- Gardner 误差计算 ---
-            % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
-            timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
-
-            % 环路滤波器
-            wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
-
-            % 存储状态用于下次计算
-            timeErrLast = timeErr;
-            y_last_I = y_I_sample;
-            y_last_Q = y_Q_sample;
-
-            % 将判决点采样存入结果数组
-            y_I_Array(end+1) = y_I_sample;
-            y_Q_Array(end+1) = y_Q_sample;
-
-        else
-            % === 当前是中点 (Midpoint) ===
-            % 存储中点采样值，用于下一次的误差计算
-            mid_I = y_I_sample;
-            mid_Q = y_Q_sample;
-        end
-
-        % 更新环路滤波器输出 (每个判决点更新一次)
-        if isStrobeSample
-            wFilterLast = wFilter;
-        end
-
-        % 切换状态: 判决点 -> 中点, 中点 -> 判决点
-        isStrobeSample = ~isStrobeSample;
-        
-        % NCO相位减去已处理的0.5个符号周期，并为下一次可能的触发更新"旧"相位
-        ncoPhase_old = 0.5; 
-        ncoPhase = ncoPhase - 0.5;
-    end
-end
-
-%% 输出复数结果
-y_IQ_Array = y_I_Array + 1j * y_Q_Array;
-
-%% FarrowCubicInterpolator实现代码
-% lib/FarrowCubicInterpolator.m
-% Farrow 结构三阶(Cubic)插值器
-% 使用 index-1, index, index+1, index+2 四个点估计 x(index+u)
-if index < 2 || index > length(x) - 2
-    y = 0; return;
-end
-x_m1 = x(index - 1);
-x_0  = x(index);
-x_p1 = x(index + 1);
-x_p2 = x(index + 2);
-
-% Farrow 结构系数
-c0 = x_0;
-c1 = 0.5 * (x_p1 - x_m1);
-c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
-c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
-
-y = ((c3 * u + c2) * u + c1) * u + c0;
-
-%% 关键实现细节
-% 1. NCO（数控振荡器）：通过ncoPhase累加器和wFilterLast步进控制采样时刻
-% 2. Farrow插值器：FarrowCubicInterpolator函数实现高精度的分数延迟插值
-% 3. 状态机：isStrobeSample标志位控制判决点和中点的交替采样
-% 4. 环路滤波器：PI控制器(c1, c2系数)平滑定时误差并控制NCO
-% 5. 误差检测：Gardner算法核心公式计算定时误差
-
-%% 复现与观察:
-% 1. 在调试模式下，执行到定时同步行 (s_qpsk_sto_sync = GardnerSymbolSync(...))。
-% 2. 观察星座图：执行完此行后，在命令窗口绘制星座图。
-%    scatterplot(s_qpsk_sto_sync);
-%    title('定时同步后的星座图');
-%    对比RRC滤波后的星座图，您会发现一个显著的变化：之前完全弥散的环状点云，
-%    现在开始向四个角落聚集，形成了四个模糊的"云团"。这证明定时恢复已经起作用，
-%    采样点已经基本对准。但由于载波频偏未校正，整个星座图可能仍在整体旋转。
-
-%% 真实世界问题排查案例：当AGC干扰定时环路
-% 在实际工程中，前级模块的异常会直接影响后续模块。一个经典的案例是 AGC（自动增益控制）与Gardner环路的相互影响。
-% *   问题现象: Gardner环路锁定不稳，定时误差输出呈现规律性的锯齿波，导致星座图在"收敛"和"发散"之间跳动。
-% *   问题根源: 如果AGC的环路参数（如调整步长、平均窗口）设置得过于激进，AGC本身可能会产生低频振荡。
-%     这个振荡会调制信号的包络，而Gardener算法恰恰对信号能量（包络）敏感。结果，Gardner环路错误地
-%     试图去"锁定"这个由AGC引入的虚假包络，而不是真实的符号定时，导致同步失败。
-% *   解决方案: 适当放宽AGC的参数，比如增大其平均窗口、减小调整步长，使其响应更平滑，消除振荡。
-%     这再次证明了在通信链路中，每个模块都不是孤立的。
-
-%% 5.4 模块详解: 载波同步 (PLL)
-% 预期效果: 经过PLL锁相环后，星座图的旋转被完全"锁住"，
-% 四个点簇将清晰、稳定地聚集在理想位置附近。这是接收机同步成功的标志性时刻。
-config.rollOff = 0.33; % 滚降系数
-
-% 检查数据文件是否存在
-if ~exist(config.inputDataFilename, 'file')
-    fprintf('警告：测试数据文件 %s 不存在，将创建模拟数据文件\n', config.inputDataFilename);
-    
-    % 创建模拟数据文件
-    simulated_data = complex(randn(1, 10000), randn(1, 10000));  % 生成10000个复数样本
-    
-    % 保存为二进制文件
-    fid = fopen(config.inputDataFilename, 'wb');
-    for i = 1:length(simulated_data)
-        fwrite(fid, [int16(real(simulated_data(i))), int16(imag(simulated_data(i)))], 'int16');
-    end
-    fclose(fid);
-    
-    fprintf('已创建模拟数据文件 %s\n', config.inputDataFilename);
-end
-
-% 加载真实信号数据（使用脚本形式的SignalLoader代码）
-% SignalLoader脚本代码开始
-filename = config.inputDataFilename;
-pointStart = 1;
-Nread = 10000;
-
-% 打开文件
-fid = fopen(filename, 'rb');
-
-% 设置搜索指针
-fseek(fid, (pointStart - 1) * 8, 'bof');
-
-% 读取数据
-if Nread == -1
-    % 读取文件中所有剩余数据
-    raw = fread(fid, [2, Inf], 'int16');
-else
-    % 读取指定数量的数据
-    raw = fread(fid, [2, Nread], 'int16');
-end
-
-s_raw = complex(raw(1,:), raw(2,:));
-
-%关闭指针
-fclose(fid);
-% SignalLoader脚本代码结束
-
-% 应用RRC滤波器预处理（使用脚本形式的RRCFilterFixedLen代码）
-% RRCFilterFixedLen脚本代码开始
-fb = config.fb;
-fs = config.fs;
-x = s_raw;
-alpha = config.rollOff;
-mode = 'rrc';
-
-% 参数
-span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
-sps = floor(fs / fb); % 每符号采样数 (Samples Per Symbol)
-
-% 生成滤波器系数
-% 'sqrt' 模式指定了生成根升余弦(RRC)滤波器
-if strcmpi(mode, 'rrc')
-    % Root Raised Cosine
-    h = rcosdesign(alpha, span, sps, 'sqrt');
-elseif strcmpi(mode, 'rc')
-    % Raised Cosine
-    h = rcosdesign(alpha, span, sps, 'normal');
-else
-    error('Unsupported mode. Use ''rrc'' or ''rc''.');
-end
-
-% 卷积，'same' 参数使输出长度与输入长度一致
-s_qpsk = conv(x, h, 'same');
-% RRCFilterFixedLen脚本代码结束
-
-% 应用Gardner同步算法（使用脚本形式的GardnerSymbolSync代码）
-% GardnerSymbolSync脚本代码开始
-s_qpsk_input = s_qpsk;
-sps = floor(config.fs / config.fb);
-B_loop = 0.0001;  % 归一化环路带宽
-zeta = 0.707;     % 阻尼系数
-
-%% 参数配置
-Wn = 2 * pi * B_loop / sps;  % 环路自然频率
-
-% 环路滤波器(PI)系数
-c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
-c2 = (4 * Wn^2)      / (1 + 2 * zeta * Wn + Wn^2);
-
-%% 初始化状态
-ncoPhase = 0;                    % NCO相位累加器
-wFilterLast = 1 / sps;           % 初始定时步进 (每个输入样本代表 1/sps 个符号)
-
-% 算法状态变量
-isStrobeSample = false;          % 状态标志: false->中点采样, true->判决点采样
-timeErrLast = 0;                 % 上一次的定时误差
-wFilter = wFilterLast;           % 环路滤波器输出
-
-% 数据存储
-y_last_I = 0; y_last_Q = 0;      % 上一个判决点采样值
-mid_I = 0; mid_Q = 0;             % 中点采样值
-y_I_Array = []; y_Q_Array = [];  % 输出数组
+fprintf('Gardner算法状态初始化完成\n');
+fprintf('开始主循环处理...\n');
 
 %% Gardner 同步主循环
 for m = 6 : length(s_qpsk_input)-3
@@ -1050,68 +819,110 @@ for m = 6 : length(s_qpsk_input)-3
     % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
     ncoPhase_old = ncoPhase;
     ncoPhase = ncoPhase + wFilterLast;
+    
+    % 记录NCO相位变化供调试观察
+    debug_ncoPhase(end+1) = ncoPhase;
 
-    % 使用 while 循环处理
+    % 使用 while 循环处理 - 当相位越过0.5时触发采样
     while ncoPhase >= 0.5
+        % --- 第一步: 计算插值时刻 (mu) ---
+        % 计算过冲点在当前采样区间的归一化位置
+        mu = (0.5 - ncoPhase_old) / wFilterLast;
+        base_idx = m - 1;
+        
+        % 调试信息：让读者观察插值参数
+        if mod(length(y_I_Array), 500) == 0 && length(y_I_Array) < 2000
+            if isStrobeSample
+                state_str = '判决点';
+            else
+                state_str = '中点';
+            end
+            fprintf('  样本 %d: mu=%.4f, base_idx=%d, 当前状态=%s\n', ...
+                length(y_I_Array), mu, base_idx, state_str);
+        end
         % --- 关键修复 1: 正确计算插值时刻 (mu) ---
         % 计算过冲点在当前采样区间的归一化位置
         mu = (0.5 - ncoPhase_old) / wFilterLast;
         base_idx = m - 1;
 
-        % --- 使用Farrow 立方插值器 (内联实现) ---
+        % --- 使用Farrow 立方插值器 (完全展开的内联实现) ---
+        % === I路插值处理 ===
         % Farrow 结构三阶(Cubic)插值器
         % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
         index = base_idx;
-        x = real(s_qpsk_input);
-        u = mu;
+        x = real(s_qpsk_input);  % 提取I路实部
+        u = mu;  % 分数延迟
+        
         if index < 2 || index > length(x) - 2
-            y_I_sample = 0;
+            y_I_sample = 0;  % 边界处理，输出零
         else
-            x_m1 = x(index - 1);
-            x_0  = x(index);
-            x_p1 = x(index + 1);
-            x_p2 = x(index + 2);
+            % 获取四个相邻采样点
+            x_m1 = x(index - 1);  % x(n-1)
+            x_0  = x(index);       % x(n)
+            x_p1 = x(index + 1);   % x(n+1)
+            x_p2 = x(index + 2);   % x(n+2)
             
-            % Farrow 结构系数
-            c0 = x_0;
-            c1 = 0.5 * (x_p1 - x_m1);
-            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
-            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            % 计算Farrow 结构系数 (I路专用变量)
+            farrow_c0_I = x_0;
+            farrow_c1_I = 0.5 * (x_p1 - x_m1);
+            farrow_c2_I = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            farrow_c3_I = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
             
-            y_I_sample = ((c3 * u + c2) * u + c1) * u + c0;
+            % Horner方法计算插值结果: y = ((c3*u + c2)*u + c1)*u + c0
+            y_I_sample = ((farrow_c3_I * u + farrow_c2_I) * u + farrow_c1_I) * u + farrow_c0_I;
         end
         
+        % === Q路插值处理 ===
         % Farrow 结构三阶(Cubic)插值器
         % 使用 base_idx-1, base_idx, base_idx+1, base_idx+2 四个点估计 x(base_idx+mu)
         index = base_idx;
-        x = imag(s_qpsk_input);
-        u = mu;
+        x = imag(s_qpsk_input);  % 提取Q路虚部
+        u = mu;  % 分数延迟
+        
         if index < 2 || index > length(x) - 2
-            y_Q_sample = 0;
+            y_Q_sample = 0;  % 边界处理，输出零
         else
-            x_m1 = x(index - 1);
-            x_0  = x(index);
-            x_p1 = x(index + 1);
-            x_p2 = x(index + 2);
+            % 获取四个相邻采样点
+            x_m1 = x(index - 1);  % x(n-1)
+            x_0  = x(index);       % x(n)
+            x_p1 = x(index + 1);   % x(n+1)
+            x_p2 = x(index + 2);   % x(n+2)
             
-            % Farrow 结构系数
-            c0 = x_0;
-            c1 = 0.5 * (x_p1 - x_m1);
-            c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
-            c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+            % 计算Farrow 结构系数 (Q路专用变量)
+            farrow_c0_Q = x_0;
+            farrow_c1_Q = 0.5 * (x_p1 - x_m1);
+            farrow_c2_Q = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+            farrow_c3_Q = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
             
-            y_Q_sample = ((c3 * u + c2) * u + c1) * u + c0;
+            % Horner方法计算插值结果: y = ((c3*u + c2)*u + c1)*u + c0
+            y_Q_sample = ((farrow_c3_Q * u + farrow_c2_Q) * u + farrow_c1_Q) * u + farrow_c0_Q;
         end
         
         if isStrobeSample
             % === 当前是判决点 (Strobe Point) ===
-
-            % --- Gardner 误差计算 ---
+            
+            % --- 第二步: Gardner 误差计算 ---
+            % Gardner时序误差检测器公式:
+            % e[k] = real{y_mid[k]} * (real{y_strobe[k]} - real{y_strobe[k-1]}) + 
+            %        imag{y_mid[k]} * (imag{y_strobe[k]} - imag{y_strobe[k-1]})
             % 误差 = 中点采样 * (当前判决点 - 上一个判决点)
             timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
+            
+            % 记录误差供调试观察
+            debug_timeErr(end+1) = timeErr;
 
-            % 环路滤波器
+            % --- 第三步: 环路滤波器 (PI控制器) ---
+            % wFilter = wFilterLast + c1*(e[k] - e[k-1]) + c2*e[k]
             wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
+            
+            % 记录滤波器输出供调试观察
+            debug_wFilter(end+1) = wFilter;
+
+            % 调试信息：显示关键计算过程
+            if mod(length(y_I_Array), 1000) == 0 && length(y_I_Array) < 5000
+                fprintf('    判决点 %d: 时序误差=%.6f, 滤波器输出=%.6f\n', ...
+                    length(y_I_Array), timeErr, wFilter);
+            end
 
             % 存储状态用于下次计算
             timeErrLast = timeErr;
@@ -1145,9 +956,146 @@ end
 
 %% 输出复数结果
 sync_output = y_I_Array + 1j * y_Q_Array;
-% GardnerSymbolSync脚本代码结束
 
-fprintf('GardnerSymbolSync函数调用成功\n');
+% 处理完成，显示详细统计信息
+fprintf('\n=== Gardner定时同步完成 ===\n');
+fprintf('  - 输入信号长度: %d 采样点\n', length(s_qpsk_input));
+fprintf('  - 输出符号数量: %d 符号\n', length(sync_output));
+fprintf('  - 符号抽取率: %.2f%% (每 %.1f 个采样点提取1个符号)\n', ...
+    length(sync_output)/length(s_qpsk_input)*100, sps);
+fprintf('  - 最终时序步进: %.6f\n', wFilterLast);
+if ~isempty(debug_timeErr)
+    fprintf('  - 平均时序误差: %.6f\n', mean(abs(debug_timeErr)));
+end
+
+% 验证输出信号的合理性
+if length(sync_output) == 0
+    warning('Gardner同步输出为空，可能存在参数设置问题');
+elseif length(sync_output) > length(s_qpsk_input)
+    warning('Gardner同步输出长度异常，超过输入长度');
+end
+
+%% 5.3.2 Gardner算法工作过程可视化
+% 这些图表让读者直观理解Gardner算法的内部工作机制
+
+% 图1: NCO相位累积过程
+figure;
+subplot(2,2,1);
+plot(debug_ncoPhase(1:min(10000,length(debug_ncoPhase))));
+title('NCO相位累积过程');
+xlabel('采样点');
+ylabel('累积相位');
+grid on;
+ylim([0, 2]);
+
+% 图2: 时序误差变化
+subplot(2,2,2);
+if ~isempty(debug_timeErr)
+    plot(debug_timeErr(1:min(10000,length(debug_timeErr))));
+    title('Gardner时序误差');
+    xlabel('符号索引');
+    ylabel('时序误差');
+    grid on;
+end
+
+% 图3: 环路滤波器输出
+subplot(2,2,3);
+if ~isempty(debug_wFilter)
+    plot(debug_wFilter(1:min(10000,length(debug_wFilter))));
+    title('环路滤波器输出');
+    xlabel('符号索引');
+    ylabel('滤波器输出');
+    grid on;
+end
+
+% 图4: 时序误差收敛过程
+subplot(2,2,4);
+if ~isempty(debug_timeErr) && length(debug_timeErr) > 10
+    % 计算滑动平均，观察收敛趋势
+    % 动态选择滑动平均窗口：随序列长度增长而增大，但有上限，保证平滑且可视化
+    window = min(1000, max(50, floor(length(debug_timeErr)/100)));
+    moving_avg = movmean(abs(debug_timeErr), window);
+    plot(moving_avg);
+    title('时序误差收敛过程 (滑动平均)');
+    xlabel('符号索引');
+    ylabel('|时序误差| (滑动平均)');
+    grid on;
+end
+sgtitle('Gardner算法内部工作过程可视化');
+
+%% 5.3.3 Gardner定时同步效果对比
+% 绘制Gardner同步前后的星座图对比，让读者看到算法效果
+
+% 星座图1: 输入信号（未同步）
+figure;
+scatterplot(s_qpsk_input(1:min(10000,length(s_qpsk_input))));
+title('输入信号星座图 (未同步) - Gardner同步前 (最多 10k 点)');
+grid on;
+
+% 星座图2: Gardner同步后的信号
+figure;
+scatterplot(sync_output(1:min(10000,length(sync_output))));
+title('Gardner同步后星座图 - 完整效果 (最多 10k 点)');
+grid on;
+
+% 星座图3: 同步后信号的前100个符号（更清晰）
+figure;
+scatterplot(sync_output(1:min(10000,length(sync_output))));
+title('Gardner同步后星座图 - 前若干符号 (最多 10k 点)');
+grid on;
+
+% 显示星座图收敛程度的数值分析
+if length(sync_output) >= 100
+    % 计算符号间的相位抖动
+    phases = angle(sync_output);
+    phase_diff = diff(unwrap(phases));
+    phase_jitter = std(phase_diff);
+    
+    % 计算符号幅度的一致性
+    amplitudes = abs(sync_output);
+    amplitude_var = var(amplitudes) / mean(amplitudes)^2;
+    
+    fprintf('\n=== 同步质量分析 ===\n');
+    fprintf('  - 相位抖动标准差: %.4f 弧度\n', phase_jitter);
+    fprintf('  - 幅度变异系数: %.4f\n', amplitude_var);
+    
+    if phase_jitter < 0.1
+        fprintf('  - 同步质量: 优秀\n');
+    elseif phase_jitter < 0.3
+        fprintf('  - 同步质量: 良好\n');
+    else
+        fprintf('  - 同步质量: 需要优化\n');
+    end
+end
+
+%% 5.3.4 实践指导 - 读者可以尝试的实验
+% 本节为MATLAB实时教程的核心，读者可以逐步执行并观察结果
+
+fprintf('\n=== 5.3节实践指导 ===\n');
+fprintf('1. 观察NCO相位累积图：理解时序跟踪的基本机制\n');
+fprintf('2. 分析时序误差变化：观察Gardner算法如何检测定时偏差\n');
+fprintf('3. 检查环路滤波器输出：了解PI控制器的平滑作用\n');
+fprintf('4. 对比星座图变化：直观感受定时同步的效果\n');
+fprintf('\n建议实验：\n');
+fprintf('- 尝试修改B_loop参数（如0.001, 0.0001）观察收敛速度变化\n');
+fprintf('- 调整zeta阻尼系数（如0.5, 1.0）观察系统响应特性\n');
+fprintf('- 在不同信号段重复执行，观察算法的稳定性\n');
+
+%% 5.3.5 模块技术总结
+% 本模块的创新点和技术要点：
+fprintf('\n=== 5.3节技术总结 ===\n');
+fprintf('✓ Gardner算法：非数据辅助的定时同步，无需先验符号信息\n');
+fprintf('✓ Farrow插值器：3阶立方插值，实现高精度分数延迟\n');
+fprintf('✓ PI环路滤波器：最优的二阶系统设计，平衡响应速度与稳定性\n');
+fprintf('✓ 全展开实现：所有算法细节完全可见，便于学习和调试\n');
+fprintf('✓ 实时可视化：多维度图表展示算法内部工作过程\n');
+fprintf('\n核心公式回顾：\n');
+fprintf('- Gardner误差: e[k] = mid_I*(strobe_I[k]-strobe_I[k-1]) + mid_Q*(strobe_Q[k]-strobe_Q[k-1])\n');
+fprintf('- 环路滤波器: w[k] = w[k-1] + c1*(e[k]-e[k-1]) + c2*e[k]\n');
+fprintf('- Farrow插值: y = ((c3*μ + c2)*μ + c1)*μ + c0\n');
+
+% 后续模块可以直接使用变量sync_output作为输入
+fprintf('\n变量传递：sync_output -> 下一模块 (载波同步)\n');
 
 %% 5.4 模块详解: 载波同步 (PLL)
 % 预期效果: 经过PLL锁相环后，星座图的旋转被完全"锁住"，
