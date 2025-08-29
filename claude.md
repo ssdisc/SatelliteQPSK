@@ -1,4 +1,5 @@
 使用中文回复;
 编写matlab live script时，不要直接编写mlx格式，而是编写m格式;
-Comprehensive_Satellite_QPSK_Tutorial.m是一个matlab实时教程，读者可以分模块依次执行所有部分，直到最终结果。禁止编写函数调用。后面的模块必须能够接续上前面的模块。
-scatterplot函数不可作为plot子图存在
+Comprehensive_Satellite_QPSK_Tutorial.m是一个matlab实时教程，读者可以分模块依次执行所有部分，直到最终结果。禁止编写函数调用。后面的模块必须能够接续上前面的模块;
+scatterplot函数不可作为plot子图存在;
+实时教程文件以学生案例的实现为主线，逐步深入每个关键模块的实现细节。
