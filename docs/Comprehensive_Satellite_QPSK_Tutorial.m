@@ -804,7 +804,7 @@ mid_I = 0; mid_Q = 0;             % 中点采样值
 y_I_Array = []; y_Q_Array = [];  % 输出数组
 
 % 调试变量 - 让读者观察算法工作过程
-debug_ncoPhase = [];             % 记录NCO相位变化
+debug_mu_values = [];            % 记录分数插值间隔mu
 debug_timeErr = [];              % 记录时序误差
 debug_wFilter = [];              % 记录环路滤波器输出
 debug_sample_count = 0;          % 采样计数器
@@ -818,9 +818,6 @@ for m = 6 : length(s_qpsk_input)-3
     % 当 ncoPhase 越过 0.5 时，产生一个中点或判决点采样
     ncoPhase_old = ncoPhase;
     ncoPhase = ncoPhase + wFilterLast;
-    
-    % 记录NCO相位变化供调试观察
-    debug_ncoPhase(end+1) = ncoPhase;
 
     % 使用 while 循环处理 - 当相位越过0.5时触发采样
     while ncoPhase >= 0.5
@@ -828,6 +825,9 @@ for m = 6 : length(s_qpsk_input)-3
         % 计算过冲点在当前采样区间的归一化位置
         mu = (0.5 - ncoPhase_old) / wFilterLast;
         base_idx = m - 1;
+        
+        % 记录分数插值间隔mu供调试观察
+        debug_mu_values(end+1) = mu;
         
         % 调试信息：让读者观察插值参数
         if mod(length(y_I_Array), 500) == 0 && length(y_I_Array) < 2000
@@ -975,13 +975,18 @@ end
 %% 5.3.2 Gardner算法工作过程可视化
 % 这些图表让读者直观理解Gardner算法的内部工作机制，下面是每个子图的理论预期：
 
-% 1. NCO相位累积过程 (左上图):
-%    - 理论预期：此图显示每次相位累加后的值（在while循环执行前记录）。
-%      在环路锁定前，由于步进值wFilterLast不稳定，相位累加的结果会有较大变化和波动；
-%      环路锁定后，由于wFilterLast稳定在1/sps (这里约为0.5)附近，相位会规律地从某个基值
-%      （约0.5）累加到约1.0。图上显示的就是这个累加后的"峰值"，在锁定后会稳定收敛
-%      到一个固定值（约1.0），形成一条水平线。这个现象证明环路已成功锁定到正确的
-%      符号定时。注意：这不是传统的"锯齿波"，而是每个循环中相位累加后的瞬时值。
+% 1. 分数插值间隔mu (左上图):
+%    - 理论预期：此图显示Gardner算法中的分数插值间隔mu值。
+%      mu表示插值点在相邻两个采样点之间的相对位置，范围通常在[0,1)之间。
+%    - mu的物理意义：
+%      * mu ≈ 0：插值点靠近当前采样点
+%      * mu ≈ 0.5：插值点在两个采样点的中间
+%      * mu ≈ 1：插值点靠近下一个采样点
+%    - 环路带宽Bn对mu的影响：
+%      * 宽带环路(Bn较大)：环路响应快，mu值快速收敛但抖动大
+%      * 窄带环路(Bn较小)：环路响应慢，mu值收敛慢但稳态抖动小
+%      * 本项目Bn=0.0001：窄带设计，mu值应该收敛到稳定值且抖动很小
+%    - 锁定过程：mu值从初始的大幅波动逐渐收敛到最佳采样位置对应的稳定值
 
 % 2. Gardner时序误差 (右上图):
 %    - 理论预期：这是瞬时的、未经滤波的定时误差。在环路锁定前，误差较大且可能无规则；
@@ -1000,15 +1005,22 @@ end
 %      - 绝对值滑动平均 (蓝线): 它反映了系统的“抖动”水平，不会收敛到零。
 %        在有噪声的情况下，它会收敛到一个稳定的正值（噪声平台），这个值的大小代表了残余定时抖动的强度。
 
-% 图1: NCO相位累积过程
+% 图1: 分数插值间隔mu
 figure;
 subplot(2,2,1);
-plot(debug_ncoPhase(1:min(10000,length(debug_ncoPhase))));
-title('NCO相位累积过程');
-xlabel('采样点');
-ylabel('累积相位');
-grid on;
-ylim([0, 2]);
+if ~isempty(debug_mu_values)
+    plot(debug_mu_values(1:min(5000,length(debug_mu_values))), 'b-', 'LineWidth', 1);
+    title('分数插值间隔mu');
+    xlabel('符号索引');
+    ylabel('mu值');
+    grid on;
+    ylim([0, 1]);
+    
+    % 添加参考线
+    yline(0, 'r--', 'alpha=0.5');
+    yline(0.5, 'g--', 'alpha=0.5');
+    yline(1, 'r--', 'alpha=0.5');
+end
 
 % 图2: 时序误差变化
 subplot(2,2,2);
@@ -1125,12 +1137,13 @@ fprintf('\n=== 5.3节技术总结 ===\n');
 fprintf('✓ Gardner算法：非数据辅助的定时同步，无需先验符号信息\n');
 fprintf('✓ Farrow插值器：3阶立方插值，实现高精度分数延迟\n');
 fprintf('✓ PI环路滤波器：最优的二阶系统设计，平衡响应速度与稳定性\n');
-fprintf('✓ 全展开实现：所有算法细节完全可见，便于学习和调试\n');
-fprintf('✓ 实时可视化：多维度图表展示算法内部工作过程\n');
+fprintf('✓ 环路带宽优化：Bn=0.0001窄带设计，确保稳态精度\n');
+fprintf('✓ mu值监控：通过分数插值间隔观察环路锁定状态\n');
 fprintf('\n核心公式回顾：\n');
 fprintf('- Gardner误差: e[k] = mid_I*(strobe_I[k]-strobe_I[k-1]) + mid_Q*(strobe_Q[k]-strobe_Q[k-1])\n');
 fprintf('- 环路滤波器: w[k] = w[k-1] + c1*(e[k]-e[k-1]) + c2*e[k]\n');
 fprintf('- Farrow插值: y = ((c3*μ + c2)*μ + c1)*μ + c0\n');
+fprintf('- 分数插值: μ = (0.5 - ncoPhase_old) / wFilterLast\n');
 
 % 后续模块可以直接使用变量sync_output作为输入
 fprintf('\n变量传递：sync_output -> 下一模块 (载波同步)\n');
