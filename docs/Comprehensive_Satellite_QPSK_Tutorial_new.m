@@ -591,7 +591,53 @@ axis equal;
 
 
 
-%% 5.2.2 RRC滤波器效果可视化
+%% 5.2.2 AGC归一化模块实现
+% 基于学生实现的AGC（自动增益控制）算法，将RRC滤波后的信号功率归一化
+% AGC是接收机中的重要模块，确保信号功率稳定，便于后续的同步和解调处理
+
+fprintf('正在执行AGC归一化...\n');
+tic;
+
+% AGC归一化实现（基于学生代码）
+target_power = 1;      % 目标功率
+agc_step = 0.01;       % AGC步长参数
+gain = 1.0;            % 初始化增益
+s_qpsk_agc = zeros(size(s_rrc_filtered));  % 预分配输出
+
+% 实时逐点更新AGC（模拟时序处理）
+for n = 1:length(s_rrc_filtered)
+    % 当前输入样本
+    sample = s_rrc_filtered(n);
+    
+    % 当前功率
+    current_power = abs(sample * gain)^2;
+    
+    % 误差
+    error = target_power - current_power;
+    
+    % 更新增益
+    gain = gain + agc_step * error * gain;
+   
+    % 防止增益爆炸
+    if gain < 1e-6
+       gain = 1e-6;
+    elseif gain > 1e6
+       gain = 1e6;
+    end 
+    
+    % 应用增益
+    s_qpsk_agc(n) = gain * sample;
+end
+
+fprintf('AGC归一化完成，耗时: %.4f 秒\n', toc);
+
+% 计算归一化前后的信号功率
+original_power = mean(abs(s_rrc_filtered).^2);
+agc_power = mean(abs(s_qpsk_agc).^2);
+fprintf('RRC滤波后信号功率: %.4f\n', original_power);
+fprintf('AGC归一化后信号功率: %.4f\n', agc_power);
+
+%% 5.2.3 RRC滤波器效果可视化
 % 绘制滤波前后的频谱对比和星座图对比，直观观察RRC滤波器的作用效果
 % 这些可视化有助于理解RRC滤波器在接收机中的关键作用
 
@@ -609,34 +655,37 @@ ylabel('功率谱密度 (dB/Hz)');
 
 % 星座图对比
 subplot(2,2,3);
-plot(real(s_qpsk(1:1000)), imag(s_qpsk(1:1000)), 'b.', 'MarkerSize', 8);
-title('RRC滤波前的星座图');
-axis equal;
-grid on;
-
-subplot(2,2,4);
 plot(real(s_rrc_filtered(1:1000)), imag(s_rrc_filtered(1:1000)), 'r.', 'MarkerSize', 8);
 title('RRC滤波后的星座图');
 axis equal;
 grid on;
 
-sgtitle('RRC匹配滤波器效果对比');
+subplot(2,2,4);
+plot(real(s_qpsk_agc(1:1000)), imag(s_qpsk_agc(1:1000)), 'g.', 'MarkerSize', 8);
+title('AGC归一化后的星座图');
+axis equal;
+grid on;
 
-%% 5.2.3 模块优化总结
+sgtitle('RRC滤波与AGC归一化效果对比');
+
+%% 5.2.4 模块优化总结
 % 本模块优化要点：
 % 1. 移除了重复的数据加载代码，依赖5.1模块已加载的数据
 % 2. 专注于RRC滤波功能的核心实现和验证
 % 3. 修正了符号率与比特率的概念混淆问题
 % 4. 增强了测试的鲁棒性，使用更合理的带宽验证阈值
-% 5. 提供了完整的效果可视化功能，便于理解RRC滤波器的作用
+% 5. 新增了AGC归一化模块，基于学生实现完成信号功率归一化
+% 6. 提供了完整的效果可视化功能，便于理解RRC滤波器和AGC的作用
 % 
-% 后续模块可以直接使用变量s_rrc_filtered作为输入
+% 后续模块可以直接使用变量s_qpsk_agc作为输入
 
 %% 测试执行与验证说明
-% 1. 本优化后的5.2模块专注于RRC滤波功能，不再重复加载数据
+% 1. 本优化后的5.2模块包含RRC滤波和AGC归一化功能，不再重复加载数据
 % 2. 频谱观察：通过上述可视化代码可观察到滤波前后信号频谱的明显变化
-% 3. 星座图分析：可以看到RRC滤波对星座图的整形效果
-% 4. 模块间数据传递：后续模块可直接使用s_rrc_filtered变量
+% 3. 星座图分析：可以看到RRC滤波和AGC归一化对星座图的整形效果
+% 4. 功率监控：AGC模块确保信号功率稳定在目标值附近
+% 5. 模块间数据传递：后续模块可直接使用s_qpsk_agc变量
+
 
 %% 5.3 模块详解: Gardner定时同步
 % 预期效果: 经过Gardner同步后，采样点被调整到每个符号的最佳位置。
