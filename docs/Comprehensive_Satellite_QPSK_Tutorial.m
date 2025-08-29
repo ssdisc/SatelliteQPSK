@@ -1438,137 +1438,79 @@ fprintf('- 相位校正: y_out[n] = y_in[n] * exp(-jθ[n])\n');
 % 后续模块可以直接使用变量pll_output作为输入
 fprintf('\n变量传递：pll_output -> 下一模块 (相位模糊恢复与帧同步)\n');
 
-%% 5.5 模块详解: 相位模糊恢复、帧同步与解扰
-% 载波同步成功后，我们得到了清晰的星座图，但还面临三个紧密相关的问题：
-% 相位模糊、帧边界未知和数据加扰。
+%% 5.5 模块详解: 相位模糊恢复、帧同步与解扰（学生案例实现）
+% 根据学生案例的实现方式，重新实现相位模糊恢复、帧同步和解扰功能
+% 采用学生案例中的FrameSync.m和FrameScramblingModule.m的精确实现
 
-%% 5.5.1 相位模糊恢复与帧同步模块原理解析
-% 功能：通过穷举四种相位并与已知的`1ACFFC1D`同步字进行相关匹配，
-% 在确定正确相位的同时，定位数据帧的起始边界
-% 原理：QPSK星座图具有π/2的旋转对称性，PLL环路可能锁定在四个稳定状态中的任意一个，
-% 导致恢复的符号存在0, 90, 180, 或270度的固定相位偏差。
-% FrameSync模块通过穷举四种可能的相位校正，找到能产生最强相关峰值的相位，
-% 同时确定帧的起始位置。
-
-%% 相位模糊恢复与帧同步
-% 问题: QPSK星座图具有 pi/2 的旋转对称性。PLL环路可能锁定在四个稳定状态中的任意一个，
-% 导致恢复的符号存在 0, 90, 180, 或 270 度的固定相位偏差。
-% 同时，我们需要在连续的符号流中找到帧的起始位置。
+%% 5.5.1 学生案例实现分析
+% 学生案例的FrameSync.m实现特点：
+% 1. 3次旋转循环（实际测试90°、180°、270°，存在bug）
+% 2. 使用SymbolToIdeaSymbol函数进行星座映射
+% 3. 直接比较同步字匹配
+% 4. 同步字：0x1A,0xCF,0xFC,0x1D（CCSDS标准）
+% 5. 帧长度：8192符号
 % 
-% 解决方案 (一体化处理): 这两个问题可以通过一个步骤解决。
-% lib/FrameSync.m 采用了一种高效的策略：
-% 1.  对接收到的符号流，穷举四种可能的相位校正
-%     （乘以 exp(j * k * pi/2)，其中 k=0,1,2,3）。
-% 2.  对每一种校正后的结果，进行硬判决得到比特流。
-% 3.  使用一个"滑窗"，将比特流与本地存储的32位 CCSDS同步字 1ACFFC1D 进行相关性计算
-%     （或直接比较）。
-% 4.  找到哪个相位校正能够产生最强的相关峰值。
-%     这个峰值的位置就是帧的起始点，而对应的相位校正角度就是需要补偿的相位模糊。
-% 
-% 结果: 此步骤完成后，我们不仅校正了相位模糊，还精确地定位了每个1024字节AOS帧的边界。
+% 修正说明：
+% 原始学生案例有bug：s_frame = s_frame * (1i)会修改原始数据
+% 导致只测试了3个相位而不是4个相位
+% 现已修正为测试完整的4个相位：0°、90°、180°、270°
 
-%% 代码实现详解
-% 在 lib/FrameSync.m 中，实现了相位模糊恢复和帧同步的一体化处理。
+% 学生案例的FrameScramblingModule.m实现特点：
+% 1. 去除前32位同步字
+% 2. I路初相：111111111111111
+% 3. Q路初相：000000011111111
+% 4. 检查帧尾8159、8160位是否为00
+% 5. 自动IQ路交换检测
 
-%% 帧同步实现代码
-% lib/FrameSync.m
-%% 定义同步字
+%% 5.5.2 帧同步实现（基于学生案例）
+% 接收5.4模块的输出信号
+s_symbol = pll_output;  % 使用PLL载波同步后的信号作为输入
+
+fprintf('=== 5.5模块：基于学生案例的相位模糊恢复与帧同步 ===\n');
+
+%% 定义同步字和帧参数
 sync_bits_length = 32;
 syncWord = uint8([0x1A,0xCF,0xFC,0x1D]);
-
-% ByteArrayToBinarySourceArray内联实现
-x = syncWord;
-mode = "reverse";
-%% ByteArrayToBinarySourceArray内联实现
-y = [];
-for m=1:length(x)
-    %% ByteToBinarySource内联实现
-    byte_x = x(m);
-    byte_mode = mode;
-    byte_y = zeros(1,8);
-    %% 利用位运算依次取出每一位
-    for n=1:8
-        byte_y(n) = bitand(byte_x,1);
-        byte_x = bitshift(byte_x,-1);
-    end
-    
-    if byte_mode == "reverse"
-        byte_y = fliplr(byte_y);
-    end
-    %% 结束ByteToBinarySource内联实现
-    
-    y = [y,byte_y];
-end
-%% 结束ByteArrayToBinarySourceArray内联实现
-
-syncWord_bits = y;
+syncWord_bits = ByteArrayToBinarySourceArray(syncWord,"reverse");
 ref_bits_I = syncWord_bits;
 ref_bits_Q = syncWord_bits;
 
-%% 定义帧长度
 frame_len = 8192;
 sync_frame_bits = [];
-sync_index_list = [];  % 用于记录同步成功的位置
+sync_index_list = [];
 
-% 设置FrameSync的输入信号（使用载波同步后的信号）
-s_symbol = sync_signal;
+fprintf('帧同步参数：\n');
+fprintf('  - 同步字: 1ACFFC1D\n');
+fprintf('  - 帧长度: %d 符号\n', frame_len);
+fprintf('  - 输入信号长度: %d 符号\n', length(s_symbol));
 
-%% 主循环：搜索帧同步位置
+%% 主循环：搜索帧同步位置（修正的学生案例实现）
 for m = 1 : length(s_symbol) - frame_len
-    s_frame = s_symbol(1, m : m + frame_len - 1);  % 提取一个可能的帧
+    s_frame_original = s_symbol(1, m : m + frame_len - 1);  % 提取一个可能的帧
 
-    % 处理相位模糊（旋转3次，每次90°）
-    for n = 1 : 3
-        s_frame = s_frame * (1i);  % 逆时针旋转90度
+    % 处理相位模糊（测试4个相位：0°、90°、180°、270°）
+    for phase_idx = 0 : 3
+        % 为每个相位创建独立的副本，避免修改原始数据
+        if phase_idx == 0
+            s_frame_test = s_frame_original;  % 0°（原始相位）
+        else
+            s_frame_test = s_frame_original * (1i)^phase_idx;  % 旋转90°*phase_idx
+        end
         
         % 提取前同步字部分
-        s_sync_frame = s_frame(1 : sync_bits_length);
-        % SymbolToIdeaSymbol内联实现
-        input_symbols = s_sync_frame;
-        %% 初始化理想符号数组
-        s_sync_frame_bits = zeros(1,length(input_symbols)) + 1j*zeros(1,length(input_symbols));
-        for idx=1:length(input_symbols)
-            symbol_I = real(input_symbols(idx));
-            symbol_Q = imag(input_symbols(idx));
-            
-            if symbol_I > 0 && symbol_Q > 0
-                s_sync_frame_bits(idx) = 0 + 0j;
-            elseif symbol_I < 0 && symbol_Q > 0
-                s_sync_frame_bits(idx) = 1 + 0j;
-            elseif symbol_I < 0 && symbol_Q < 0
-                s_sync_frame_bits(idx) = 1 + 1j;
-            elseif symbol_I > 0 &&  symbol_Q < 0
-                s_sync_frame_bits(idx) = 0 + 1j;
-            end
-        end
+        s_sync_frame = s_frame_test(1 : sync_bits_length);
+        s_sync_frame_bits = SymbolToIdeaSymbol(s_sync_frame);  % 解调为理想符号
         
         i_sync_frame_bits = real(s_sync_frame_bits);
         q_sync_frame_bits = imag(s_sync_frame_bits);
         
         % 检查同步字匹配
         if isequal(i_sync_frame_bits, ref_bits_I) && isequal(q_sync_frame_bits, ref_bits_Q)
-            disp('序列匹配');
-            disp(['编号 ', num2str(m)]);
+            fprintf('序列匹配: 位置 %d, 相位 %d°\n', m, phase_idx * 90);
             
-            % SymbolToIdeaSymbol内联实现
-            input_frame_symbols = s_frame;
-            %% 初始化理想符号数组
-            s_frame_bits = zeros(1,length(input_frame_symbols)) + 1j*zeros(1,length(input_frame_symbols));
-            for idx2=1:length(input_frame_symbols)
-                symbol_I = real(input_frame_symbols(idx2));
-                symbol_Q = imag(input_frame_symbols(idx2));
-                
-                if symbol_I > 0 && symbol_Q > 0
-                    s_frame_bits(idx2) = 0 + 0j;
-                elseif symbol_I < 0 && symbol_Q > 0
-                    s_frame_bits(idx2) = 1 + 0j;
-                elseif symbol_I < 0 && symbol_Q < 0
-                    s_frame_bits(idx2) = 1 + 1j;
-                elseif symbol_I > 0 &&  symbol_Q < 0
-                    s_frame_bits(idx2) = 0 + 1j;
-                end
-            end
-            
+            % 使用匹配的相位对整个帧进行校正
+            s_frame_corrected = s_frame_original * (1i)^phase_idx;
+            s_frame_bits = SymbolToIdeaSymbol(s_frame_corrected);  % 获取整帧
             sync_frame_bits = [sync_frame_bits; s_frame_bits];
             sync_index_list = [sync_index_list, m];      % 记录匹配位置
             break;
@@ -1576,7 +1518,12 @@ for m = 1 : length(s_symbol) - frame_len
     end
 end
 
-%% 绘图：帧同步时刻图
+fprintf('✓ 帧同步完成！\n');
+fprintf('  - 找到同步帧数量: %d\n', size(sync_frame_bits, 1));
+fprintf('  - 同步位置数量: %d\n', length(sync_index_list));
+
+%% 5.5.3 帧同步结果可视化
+% 绘制帧同步时刻图
 figure;
 stem(sync_index_list, ones(size(sync_index_list)), 'filled');
 xlabel('符号位置');
@@ -1584,185 +1531,283 @@ ylabel('同步触发');
 title('帧同步检测位置');
 grid on;
 
-%% 关键实现细节
-% 1. 相位穷举：通过 s_frame = s_frame * (1i) 实现90度旋转，穷举4种相位状态
-% 2. 同步字匹配：使用isequal函数直接比较解调后的比特流与参考同步字
-% 3. 帧提取：一旦找到匹配位置，提取完整帧数据
-% 4. 位置记录：sync_index_list记录所有成功同步的位置，用于后续分析
-
-%% 5.5.3 解扰模块原理解析
-% 功能：根据CCSDS标准，使用1+X^14+X^15多项式，对已同步的帧数据进行解扰，
-% 恢复出经LDPC编码后的原始数据
-% 原理：在发射端，数据在LDPC编码后、加入同步字之前，经过了加扰处理。
-% 加扰的目的是打破数据中可能存在的长串"0"或"1"，保证信号频谱的均匀性。
-% 接收端通过与发射端同步的伪随机序列进行异或运算，恢复原始数据。
-
-%% 解扰 (Descrambling)
-% 目标: 恢复被加扰的原始数据。根据《卫星数传信号帧格式说明.pdf》，
-% 在发射端，数据在LDPC编码后、加入同步字之前，经过了加扰处理。
-% 加扰的目的是打破数据中可能存在的长串"0"或"1"，保证信号频谱的均匀性，
-% 这有利于接收端各同步环路的稳定工作。
-% 
-% 工作机制:
-% 1.  加扰多项式: 加扰器基于一个本原多项式 1 + X^14 + X^15 来生成伪随机二进制序列 (PRBS)。
-% 2.  不同初相: I路和Q路的加扰器使用不同的初始状态（初相），以生成两路独立的PRBS。
-%     *   I路初相: 111111111111111 (二进制，左为高位)
-%     *   Q路初相: 000000011111111 (二进制，左为高位)
-% 3.  解扰实现: 在接收端，lib/FrameScramblingModule.m 会根据同样的配置（多项式和初相）
-%     生成一个完全同步的PRBS。将接收到的加扰数据流与本地生成的PRBS再次进行按位异或（XOR）。
-%     根据逻辑运算 (Data XOR PRBS) XOR PRBS = Data，即可恢复出LDPC编码后的数据。
-% 
-% 关键: 解扰成功的关键在于，接收端的PRBS生成器（LFSR）的配置必须与发射端完全一致，
-% 并且其起始状态需要通过帧同步来精确对齐。
-
-%% 代码实现详解
-% 在 lib/FrameScramblingModule.m 和 lib/ScramblingModule.m 中，实现了完整的解扰功能。
-
-%% 解扰模块实现代码
-% lib/FrameScramblingModule.m
-% 设置输入数据（使用帧同步后的数据）
-s_symbols = sync_frame_bits;
-
-%% 获取x的形状
-[rows,columns] = size(s_symbols);
-x = zeros(rows,columns-32);
-
-%% 定义保留矩阵
-I_array = zeros(rows,columns-32);
-Q_array = zeros(rows,columns-32);
-
-%% 对x进行裁剪，过滤同步字
-for m=1:rows
-   x(m,:)=s_symbols(m,33:end);
+% 如果有同步位置，显示相位校正分析
+if ~isempty(sync_index_list)
+    fprintf('\n=== 帧同步分析 ===\n');
+    fprintf('同步位置分布：\n');
+    for i = 1:min(5, length(sync_index_list))
+        fprintf('  帧 %d: 位置 %d\n', i, sync_index_list(i));
+    end
+    if length(sync_index_list) > 5
+        fprintf('  ... (共 %d 个同步位置)\n', length(sync_index_list));
+    end
 end
 
-%% 定义I路和Q路的解扰器相位
-InPhase_I = ones(1,15);
-InPhase_Q = [ones(1,8),zeros(1,7)];
+%% 5.5.4 解扰实现（基于学生案例）
+% 使用学生案例的FrameScramblingModule.m实现
 
-%% 获取I路和Q路
-I_bits = real(x);
-Q_bits = imag(x);
-
-for m=1:rows
-   I_row_bits = I_bits(m,:);
-   Q_row_bits = Q_bits(m,:);
-   
-   % 尝试解扰，考虑IQ未反向
-   % I路解扰（内联ScramblingModule实现）
-   data = I_row_bits;
-   InPhase = InPhase_I;
-   N = length(data);
-   I_deScrambling = zeros(1,N);
-   for idx_i=1:N
-       I_deScrambling(idx_i) = bitxor(InPhase(15),data(idx_i));
-       scrambled_feedback = bitxor(InPhase(15),InPhase(14));
-       
-       % 更新模拟移位寄存器
-       for n=0:13
-          InPhase(15-n) = InPhase(14-n);
-       end
-       
-       InPhase(1) = scrambled_feedback;
-   end
-   
-   % Q路解扰（内联ScramblingModule实现）
-   data = Q_row_bits;
-   InPhase = InPhase_Q;
-   N = length(data);
-   Q_deScrambling = zeros(1,N);
-   for idx_q=1:N
-       Q_deScrambling(idx_q) = bitxor(InPhase(15),data(idx_q));
-       scrambled_feedback = bitxor(InPhase(15),InPhase(14));
-       
-       % 更新模拟移位寄存器
-       for n=0:13
-          InPhase(15-n) = InPhase(14-n);
-       end
-       
-       InPhase(1) = scrambled_feedback;
-   end
-   
-   % 检查是否合法
-   if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
-       disp("序列合法");
-       I_array(m,:) = I_deScrambling;
-       Q_array(m,:) = Q_deScrambling;
-   else
-       % 假设未解扰成功
-       % IQ两路交换，然后解扰
-       % I路用Q路初相解扰（内联ScramblingModule实现）
-       data = I_row_bits;
-       InPhase = InPhase_Q;
-       N = length(data);
-       I_deScrambling_swap = zeros(1,N);
-       for idx_i2=1:N
-           I_deScrambling_swap(idx_i2) = bitxor(InPhase(15),data(idx_i2));
-           scrambled_feedback = bitxor(InPhase(15),InPhase(14));
-           
-           % 更新模拟移位寄存器
-           for n=0:13
-              InPhase(15-n) = InPhase(14-n);
-           end
-           
-           InPhase(1) = scrambled_feedback;
-       end
-       
-       % Q路用I路初相解扰（内联ScramblingModule实现）
-       data = Q_row_bits;
-       InPhase = InPhase_I;
-       N = length(data);
-       Q_deScrambling_swap = zeros(1,N);
-       for idx_q2=1:N
-           Q_deScrambling_swap(idx_q2) = bitxor(InPhase(15),data(idx_q2));
-           scrambled_feedback = bitxor(InPhase(15),InPhase(14));
-           
-           % 更新模拟移位寄存器
-           for n=0:13
-              InPhase(15-n) = InPhase(14-n);
-           end
-           
-           InPhase(1) = scrambled_feedback;
-       end
-       
-       % 检查是否合法
-       if I_deScrambling_swap(8159) == 0 && I_deScrambling_swap(8160) == 0 && Q_deScrambling_swap(8159) == 0 && Q_deScrambling_swap(8160) == 0
-           disp("合法，但翻转");
-           I_array(m,:) = Q_deScrambling_swap;
-           Q_array(m,:) = I_deScrambling_swap;
-       else
-           % 维持原样输出
-           I_array(m,:) = I_deScrambling;
-           Q_array(m,:) = Q_deScrambling;
-           
-           disp("误码率过高");
-       end
-   end
-end
-
-%% ScramblingModule实现代码
-% lib/ScramblingModule.m
-%% 定义加扰解扰逻辑
-N = length(data);
-scrambled_data = zeros(1,N);
-for m=1:N
-    scrambled_data(m) = bitxor(InPhase(15),data(m));
-    scrambled_feedback = bitxor(InPhase(15),InPhase(14));
+if ~isempty(sync_frame_bits)
+    fprintf('\n=== 5.5模块：基于学生案例的解扰处理 ===\n');
     
-    % 更新模拟移位寄存器
-    for n=0:13
-       InPhase(15-n) = InPhase(14-n);
+    % 获取数据形状
+    [rows, columns] = size(sync_frame_bits);
+    x = zeros(rows, columns-32);
+    
+    % 定义输出矩阵
+    I_array = zeros(rows, columns-32);
+    Q_array = zeros(rows, columns-32);
+    
+    fprintf('解扰参数：\n');
+    fprintf('  - 输入帧数量: %d\n', rows);
+    fprintf('  - 每帧符号数: %d\n', columns);
+    fprintf('  - 去除同步字后: %d 符号\n', columns-32);
+    
+    % 对sync_frame_bits进行裁剪，过滤同步字
+    for m=1:rows
+       x(m,:) = sync_frame_bits(m,33:end); 
     end
     
-    InPhase(1) = scrambled_feedback;
+    % 定义I路和Q路的解扰器相位
+    InPhase_I = ones(1,15);
+    InPhase_Q = [ones(1,8), zeros(1,7)];
+    
+    % 获取I路和Q路
+    I_bits = real(x);
+    Q_bits = imag(x);
+    
+    % 对每帧进行解扰处理
+    for m=1:rows
+       I_row_bits = I_bits(m,:);
+       Q_row_bits = Q_bits(m,:);
+       
+       % 尝试解扰，考虑IQ未反向
+       I_deScrambling = ScramblingModule(I_row_bits, InPhase_I);
+       Q_deScrambling = ScramblingModule(Q_row_bits, InPhase_Q);
+       
+       % 检查是否合法（学生案例：检查8159、8160位）
+       if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
+           disp("序列合法");
+           I_array(m,:) = I_deScrambling;
+           Q_array(m,:) = Q_deScrambling;
+       else
+           % 假设未解扰成功
+           % IQ两路交换，然后解扰
+           I_deScrambling = ScramblingModule(I_row_bits, InPhase_Q);
+           Q_deScrambling = ScramblingModule(Q_row_bits, InPhase_I);
+           
+           % 检查是否合法
+           if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
+               disp("合法，但翻转");
+               I_array(m,:) = Q_deScrambling;
+               Q_array(m,:) = I_deScrambling;
+           else
+               % 维持原样输出
+               I_array(m,:) = I_deScrambling;
+               Q_array(m,:) = Q_deScrambling;
+               
+               disp("误码率过高");
+           end
+       end
+    end
+    
+    % 统计解扰结果
+    successful_frames = 0;
+    for m=1:rows
+        if I_array(m,8159) == 0 && I_array(m,8160) == 0 && Q_array(m,8159) == 0 && Q_array(m,8160) == 0
+            successful_frames = successful_frames + 1;
+        end
+    end
+    
+    success_rate = successful_frames / rows * 100;
+    
+    fprintf('\n=== 解扰结果统计 ===\n');
+    fprintf('  - 总帧数: %d\n', rows);
+    fprintf('  - 成功解扰帧数: %d\n', successful_frames);
+    fprintf('  - 解扰成功率: %.1f%%\n', success_rate);
+    
+    if success_rate >= 90
+        fprintf('  - 解扰质量: 优秀\n');
+    elseif success_rate >= 70
+        fprintf('  - 解扰质量: 良好\n');
+    elseif success_rate >= 50
+        fprintf('  - 解扰质量: 一般\n');
+    else
+        fprintf('  - 解扰质量: 需要优化\n');
+    end
+    
+    % 解扰结果可视化
+    figure('Name', '学生案例解扰结果分析', 'Position', [150, 150, 1200, 800]);
+    
+    % 子图1：I路数据分布（前5帧）
+    subplot(2,2,1);
+    if rows > 0
+        imagesc(I_array(1:min(5, rows), 1:min(100, size(I_array, 2))));
+        colormap(gray);
+        colorbar;
+        title('I路解扰数据分布 (前5帧)');
+        xlabel('比特位置');
+        ylabel('帧编号');
+    else
+        text(0.5, 0.5, '无I路数据', 'HorizontalAlignment', 'center');
+        title('I路解扰数据分布');
+    end
+    
+    % 子图2：Q路数据分布（前5帧）
+    subplot(2,2,2);
+    if rows > 0
+        imagesc(Q_array(1:min(5, rows), 1:min(100, size(Q_array, 2))));
+        colormap(gray);
+        colorbar;
+        title('Q路解扰数据分布 (前5帧)');
+        xlabel('比特位置');
+        ylabel('帧编号');
+    else
+        text(0.5, 0.5, '无Q路数据', 'HorizontalAlignment', 'center');
+        title('Q路解扰数据分布');
+    end
+    
+    % 子图3：帧尾验证结果
+    subplot(2,2,3);
+    if rows > 0
+        tail_validation = zeros(1, rows);
+        for m=1:rows
+            if I_array(m,8159) == 0 && I_array(m,8160) == 0 && Q_array(m,8159) == 0 && Q_array(m,8160) == 0
+                tail_validation(m) = 1;
+            end
+        end
+        
+        bar([sum(tail_validation), rows-sum(tail_validation)]);
+        title('帧尾验证结果 (8159-8160位)');
+        xlabel('验证状态');
+        ylabel('帧数');
+        xticklabels({'成功', '失败'});
+        grid on;
+    else
+        text(0.5, 0.5, '无验证数据', 'HorizontalAlignment', 'center');
+        title('帧尾验证结果');
+    end
+    
+    % 子图4：比特统计
+    subplot(2,2,4);
+    if rows > 0
+        I_zeros = sum(I_array(:) == 0);
+        I_ones = sum(I_array(:) == 1);
+        Q_zeros = sum(Q_array(:) == 0);
+        Q_ones = sum(Q_array(:) == 1);
+        
+        bar([I_zeros, Q_zeros; I_ones, Q_ones]);
+        title('比特统计');
+        xlabel('比特值');
+        ylabel('数量');
+        legend({'I路', 'Q路'});
+        set(gca, 'XTickLabel', {'0', '1'});
+        grid on;
+    else
+        text(0.5, 0.5, '无统计数据', 'HorizontalAlignment', 'center');
+        title('比特统计');
+    end
+    
+else
+    fprintf('\n警告：未检测到同步帧，跳过解扰处理。\n');
+    I_array = [];
+    Q_array = [];
 end
 
-%% 关键实现细节
-% 1. 同步字过滤：x(m,:)=s_symbols(m,33:end) 去除前32位同步字
-% 2. 初相设置：I路使用ones(1,15)，Q路使用[ones(1,8),zeros(1,7)]
-% 3. 智能验证：通过检查帧尾两位是否为00来验证解扰正确性
-% 4. IQ路交换处理：自动检测并纠正可能的IQ路交换问题
-% 5. LFSR实现：使用1+X^14+X^15多项式生成PRBS序列
+%% 学生案例辅助函数实现
+
+% ByteArrayToBinarySourceArray函数实现
+function y = ByteArrayToBinarySourceArray(x, mode)
+    y = [];
+    for m=1:length(x)
+        bits_array = ByteToBinarySource(x(m), mode);
+        y = [y, bits_array];
+    end
+end
+
+% ByteToBinarySource函数实现
+function y = ByteToBinarySource(x, mode)
+    y = zeros(1,8);
+    % 利用位运算依次取出每一位
+    for m=1:8
+        y(m) = bitand(x,1);
+        x = bitshift(x,-1);
+    end
+    
+    if mode == "reverse"
+        y = fliplr(y);
+    end
+end
+
+% SymbolToIdeaSymbol函数实现
+function ideaSymbol = SymbolToIdeaSymbol(s_symbol)
+    ideaSymbol = zeros(1,length(s_symbol)) + 1j*zeros(1,length(s_symbol));
+    for m=1:length(s_symbol)
+        symbol_I = real(s_symbol(m));
+        symbol_Q = imag(s_symbol(m));
+        
+        if symbol_I > 0 && symbol_Q > 0
+            ideaSymbol(m) = 0 + 0j;
+        elseif symbol_I < 0 && symbol_Q > 0
+            ideaSymbol(m) = 1 + 0j;
+        elseif symbol_I < 0 && symbol_Q < 0
+            ideaSymbol(m) = 1 + 1j;
+        elseif symbol_I > 0 &&  symbol_Q < 0
+            ideaSymbol(m) = 0 + 1j;
+        end
+    end
+end
+
+% ScramblingModule函数实现
+function scrambled_data = ScramblingModule(data, InPhase)
+    N = length(data);
+    scrambled_data = zeros(1,N);
+    for m=1:N
+        scrambled_data(m) = bitxor(InPhase(15), data(m));
+        scrambled_feedback = bitxor(InPhase(15), InPhase(14));
+        
+        % 更新模拟移位寄存器
+        for n=0:13
+           InPhase(15-n) = InPhase(14-n);
+        end
+        
+        InPhase(1) = scrambled_feedback;
+    end
+end
+
+%% 5.5.5 学生案例实现技术总结
+fprintf('\n=== 5.5节技术总结（修正的学生案例实现） ===\n');
+fprintf('✓ 帧同步：采用4次旋转穷举法，每次90°（修正了原代码的bug）\n');
+fprintf('✓ 相位恢复：通过同步字直接匹配确定正确相位\n');
+fprintf('✓ 解扰算法：严格遵循学生案例的ScramblingModule实现\n');
+fprintf('✓ IQ交换检测：自动检测并纠正IQ路交换问题\n');
+fprintf('✓ 结果验证：通过8159-8160位验证解扰正确性\n');
+fprintf('✓ 数据完整性：保持原始数据不被修改，确保相位测试正确\n');
+fprintf('\n核心参数（学生案例）：\n');
+fprintf('- 同步字: 1ACFFC1D (32位)\n');
+fprintf('- 帧长度: 8192符号\n');
+fprintf('- 测试相位: 0°、90°、180°、270°（完整4相位）\n');
+fprintf('- I路初相: 111111111111111\n');
+fprintf('- Q路初相: 000000011111111\n');
+fprintf('- 验证位置: 8159-8160位\n');
+
+% 重要说明
+fprintf('\n重要修正：\n');
+fprintf('- 原学生案例代码存在bug：s_frame = s_frame * (1i)会修改原始数据\n');
+fprintf('- 导致只测试3个相位（90°、180°、270°），缺少0°相位测试\n');
+fprintf('- 现已修正：为每个相位创建独立副本，测试完整的4个相位\n');
+fprintf('- 这应该能够找到更多的同步位置，提高同步成功率\n');
+
+% 输出最终结果
+if ~isempty(I_array) && ~isempty(Q_array)
+    fprintf('\n最终输出变量：\n');
+    fprintf('- I_array: I路解扰数据 (%d帧 x %d比特)\n', size(I_array, 1), size(I_array, 2));
+    fprintf('- Q_array: Q路解扰数据 (%d帧 x %d比特)\n', size(Q_array, 1), size(Q_array, 2));
+    fprintf('这些数据与学生案例的输出格式完全一致\n');
+else
+    fprintf('\n警告：未产生有效输出数据\n');
+end
+
+fprintf('====================\n\n');
 
 %% 6. 运行与验证
 % 当程序完整运行结束后，您可以通过以下方式验证接收机的性能。
