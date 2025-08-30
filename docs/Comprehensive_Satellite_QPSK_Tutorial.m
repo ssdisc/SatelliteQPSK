@@ -1903,6 +1903,25 @@ if ~isempty(sync_frame_bits)
        end
     end
     
+    % 创建包含同步字的完整帧数据（新增）
+    % 为了十六进制显示需要，创建包含同步字的完整变量
+    I_array_full = zeros(rows, columns);
+    Q_array_full = zeros(rows, columns);
+    
+    fprintf('\n=== 创建包含同步字的完整帧数据 ===\n');
+    for m=1:rows
+        % 提取同步字部分（前32位）
+        I_sync_bits = real(sync_frame_bits(m, 1:32));
+        Q_sync_bits = imag(sync_frame_bits(m, 1:32));
+        
+        % 组合同步字和解扰后的数据
+        I_array_full(m,:) = [I_sync_bits, I_array(m,:)];
+        Q_array_full(m,:) = [Q_sync_bits, Q_array(m,:)];
+    end
+    
+    fprintf('  - 完整帧I路数据: %d帧 x %d比特（包含32位同步字）\n', size(I_array_full, 1), size(I_array_full, 2));
+    fprintf('  - 完整帧Q路数据: %d帧 x %d比特（包含32位同步字）\n', size(Q_array_full, 1), size(Q_array_full, 2));
+    
     % 统计解扰结果
     successful_frames = 0;
     for m=1:rows
@@ -2067,7 +2086,154 @@ function scrambled_data = ScramblingModule(data, InPhase)
     end
 end
 
-%% 5.5.8 学生案例实现技术总结
+    %% 5.5.8 解调输出十六进制数显示（参考学生案例实现）
+    % 将解扰后的I/Q路二进制数据转换为十六进制格式输出
+    % 使用包含同步字的完整帧数据进行显示
+    %
+    % 这是学生案例中重要的数据验证环节，通过十六进制格式可以：
+    % 1. 验证解扰数据的正确性 
+    % 2. 便于与标准数据进行对比
+    % 3. 为后续LDPC译码提供标准输入格式
+    % 4. 显示完整的帧结构，包括同步字1ACFFC1D
+    
+    fprintf('\n=== 5.5.8 解调输出十六进制数显示（含同步字）===\n');
+    
+    % 显示解调数据的十六进制表示（前几帧作为示例）
+    frames_to_display = min(3, size(I_array_full, 1));
+    bytes_per_display = 32; % 每行显示的字节数
+    
+    for frame_idx = 1:frames_to_display
+        fprintf('\n--- 帧 %d 解调数据十六进制输出（完整帧，含同步字）---\n', frame_idx);
+        
+        % 获取当前帧的I路和Q路数据（包含同步字）
+        I_frame_bits = I_array_full(frame_idx, :);
+        Q_frame_bits = Q_array_full(frame_idx, :);
+        
+        % 将比特数据组合成字节并转换为十六进制
+        % 计算可完整转换的字节数
+        total_bits = length(I_frame_bits);
+        complete_bytes = floor(total_bits / 8);
+        
+        fprintf('I路数据（前%d字节，共%d比特，含32位同步字）：\n', min(bytes_per_display, complete_bytes), total_bits);
+        
+        % I路十六进制输出
+        for byte_idx = 1:min(bytes_per_display, complete_bytes)
+            bit_start = (byte_idx-1)*8 + 1;
+            bit_end = byte_idx*8;
+            byte_bits = I_frame_bits(bit_start:bit_end);
+            byte_value = bi2de(byte_bits, 'left-msb');
+            
+            fprintf('%02X ', byte_value);
+            
+            % 每16个字节换行
+            if mod(byte_idx, 16) == 0
+                fprintf('\n');
+            end
+        end
+        
+        % 如果最后一行没有换行，补充换行符
+        if mod(min(bytes_per_display, complete_bytes), 16) ~= 0
+            fprintf('\n');
+        end
+        
+        fprintf('\nQ路数据（前%d字节，共%d比特，含32位同步字）：\n', min(bytes_per_display, complete_bytes), total_bits);
+        
+        % Q路十六进制输出
+        for byte_idx = 1:min(bytes_per_display, complete_bytes)
+            bit_start = (byte_idx-1)*8 + 1;
+            bit_end = byte_idx*8;
+            byte_bits = Q_frame_bits(bit_start:bit_end);
+            byte_value = bi2de(byte_bits, 'left-msb');
+            
+            fprintf('%02X ', byte_value);
+            
+            % 每16个字节换行
+            if mod(byte_idx, 16) == 0
+                fprintf('\n');
+            end
+        end
+        
+        % 如果最后一行没有换行，补充换行符
+        if mod(min(bytes_per_display, complete_bytes), 16) ~= 0
+            fprintf('\n');
+        end
+        
+        % 显示I/Q路交织的十六进制数据（学生案例常用格式）
+        fprintf('\nI/Q交织数据（前%d字节，含同步字）：\n', min(bytes_per_display, complete_bytes));
+        
+        for byte_idx = 1:min(bytes_per_display, complete_bytes)
+            bit_start = (byte_idx-1)*8 + 1;
+            bit_end = byte_idx*8;
+            
+            I_byte_bits = I_frame_bits(bit_start:bit_end);
+            Q_byte_bits = Q_frame_bits(bit_start:bit_end);
+            
+            I_byte_value = bi2de(I_byte_bits, 'left-msb');
+            Q_byte_value = bi2de(Q_byte_bits, 'left-msb');
+            
+            fprintf('%02X%02X ', I_byte_value, Q_byte_value);
+            
+            % 每8组（16字节）换行
+            if mod(byte_idx, 8) == 0
+                fprintf('\n');
+            end
+        end
+        
+        % 如果最后一行没有换行，补充换行符
+        if mod(min(bytes_per_display, complete_bytes), 8) ~= 0
+            fprintf('\n');
+        end
+        
+        % 显示统计信息
+        I_hex_zeros = sum(I_frame_bits == 0);
+        I_hex_ones = sum(I_frame_bits == 1);
+        Q_hex_zeros = sum(Q_frame_bits == 0);
+        Q_hex_ones = sum(Q_frame_bits == 1);
+        
+        fprintf('\n数据统计：\n');
+        fprintf('  I路 - 0比特: %d (%.1f%%), 1比特: %d (%.1f%%)\n', ...
+            I_hex_zeros, I_hex_zeros/total_bits*100, I_hex_ones, I_hex_ones/total_bits*100);
+        fprintf('  Q路 - 0比特: %d (%.1f%%), 1比特: %d (%.1f%%)\n', ...
+            Q_hex_zeros, Q_hex_zeros/total_bits*100, Q_hex_ones, Q_hex_ones/total_bits*100);
+        
+        % 显示同步字验证（前32位应该是1ACFFC1D）
+        fprintf('同步字验证：\n');
+        if total_bits >= 32
+            I_sync_hex = '';
+            Q_sync_hex = '';
+            for sync_byte = 1:4
+                bit_start = (sync_byte-1)*8 + 1;
+                bit_end = sync_byte*8;
+                I_sync_bits = I_frame_bits(bit_start:bit_end);
+                Q_sync_bits = Q_frame_bits(bit_start:bit_end);
+                I_sync_hex = [I_sync_hex, sprintf('%02X', bi2de(I_sync_bits, 'left-msb'))];
+                Q_sync_hex = [Q_sync_hex, sprintf('%02X', bi2de(Q_sync_bits, 'left-msb'))];
+            end
+            fprintf('  I路同步字: %s %s\n', I_sync_hex, iif(strcmp(I_sync_hex, '1ACFFC1D'), '✓', '✗'));
+            fprintf('  Q路同步字: %s %s\n', Q_sync_hex, iif(strcmp(Q_sync_hex, '1ACFFC1D'), '✓', '✗'));
+        end
+        
+        % 显示帧尾验证位（学生案例的成功标准）
+        fprintf('帧尾验证位检查（解扰数据部分）：\n');
+        % 对应到原始I_array的验证位
+        if size(I_array, 2) >= 8160
+            fprintf('  I路8159-8160位: %d,%d %s\n', I_array(frame_idx, 8159), I_array(frame_idx, 8160), ...
+                iif(I_array(frame_idx, 8159)==0 && I_array(frame_idx, 8160)==0, '✓', '✗'));
+            fprintf('  Q路8159-8160位: %d,%d %s\n', Q_array(frame_idx, 8159), Q_array(frame_idx, 8160), ...
+                iif(Q_array(frame_idx, 8159)==0 && Q_array(frame_idx, 8160)==0, '✓', '✗'));
+        else
+            fprintf('  解扰数据长度不足，无法检查验证位\n');
+        end
+    end
+    
+    fprintf('\n💡 十六进制数据说明：\n');
+    fprintf('  - 以上十六进制数据为包含同步字的完整帧数据\n');
+    fprintf('  - 前4个字节应显示同步字1ACFFC1D\n');
+    fprintf('  - 第5字节开始为解扰后的AOS帧数据\n');
+    fprintf('  - 可用于与标准测试数据进行对比验证\n');
+    fprintf('  - 符合学生案例中的数据输出格式要求\n');
+
+%% 5.5.9 学生案例实现技术总结
 fprintf('\n=== 5.5节技术总结（修正的学生案例实现） ===\n');
 fprintf('✓ 帧同步：采用4次旋转穷举法，每次90°（修正了原代码的bug）\n');
 fprintf('✓ 相位恢复：通过同步字直接匹配确定正确相位\n');
@@ -2096,6 +2262,7 @@ if ~isempty(I_array) && ~isempty(Q_array)
     fprintf('- I_array: I路解扰数据 (%d帧 x %d比特)\n', size(I_array, 1), size(I_array, 2));
     fprintf('- Q_array: Q路解扰数据 (%d帧 x %d比特)\n', size(Q_array, 1), size(Q_array, 2));
     fprintf('这些数据与学生案例的输出格式完全一致\n');
+    
 else
     fprintf('\n警告：未产生有效输出数据\n');
 end
