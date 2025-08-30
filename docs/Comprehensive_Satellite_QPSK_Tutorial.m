@@ -1,30 +1,39 @@
 %% 卫星QPSK接收机MATLAB实现深度解析教程
-% 本教程完全按照原始TUTORIAL.md的结构设计，逐步解析程梓睿同学实现的QPSK信号接收机。
+% 本教程是一个完整的QPSK数字接收机实现指南，基于真实卫星通信数据处理需求。
 %
-% 首先介绍项目背景和理论基础，然后详细解析每个核心模块的实现原理和代码细节。
+% 教程采用模块化设计，从信号加载到最终解扰输出，逐步构建完整的QPSK接收链路，
+%
+% 每个模块都包含详细的理论分析、参数说明和实现代码，便于深入理解数字通信原理。
 
 %% 1. 项目简介与理论背景
 
 %% 1.1 项目概述
-% 本项目旨在使用MATLAB从零开始构建一个功能完备的QPSK（四相相移键控）信号接收机。
+% 本项目构建一个功能完备的QPSK（四相相移键控）数字接收机系统。
 %
-% 该接收机能够处理一个真实的、从文件中加载的卫星中频IQ（同相/正交）数据流，
-% 通过一系列精密的数字信号处理步骤——包括匹配滤波、定时恢复、载波恢复、帧同步和解扰——
-% 最终准确地恢复出原始传输的二进制数据。
+% 接收机能够处理真实的卫星中频IQ（同相/正交）数据流，
 %
-% 真实世界应用背景：本教程所用到的技术和信号处理流程，与真实的遥感卫星
+% 通过一系列精密的数字信号处理步骤——包括匹配滤波、定时恢复、载波恢复、
+%
+% 帧同步和解扰——最终准确地恢复出原始传输的二进制数据。
+%
+% 真实世界应用背景：本教程采用的技术和信号处理流程，与真实的遥感卫星
+%
 % （如SAR合成孔径雷达卫星）下行数据链路解调项目高度相似。
+%
 % 掌握这些技能意味着您将有能力处理实际的星地通信数据。
-% 
-% 这不仅仅是一个代码复现练习，更是一次深入探索数字通信物理层核心技术的旅程。
+%
+% 这不仅仅是一个代码实现练习，更是一次深入探索数字通信物理层核心技术的旅程。
 %
 % 通过本教程，您将能够：
 %
-% *   理解理论：将通信原理中的抽象概念（如RRC滤波器、Gardner算法、锁相环）与实际的MATLAB代码对应起来。
+% *   理解理论：将通信原理中的抽象概念（如RRC滤波器、Gardner算法、锁相环）
+%     与实际的MATLAB代码对应起来。
 %
-% *   掌握实践：亲手操作、调试并观察信号在接收机中每一步的变化，建立直观而深刻的认识。
+% *   掌握实践：亲手操作、调试并观察信号在接收机中每一步的变化，
+%     建立直观而深刻的认识。
 %
-% *   获得能力：具备分析、设计和实现基本数字接收机模块的能力，为更复杂的通信系统设计打下坚实基础。
+% *   获得能力：具备分析、设计和实现基本数字接收机模块的能力，
+%     为更复杂的通信系统设计打下坚实基础。
 %
 
 %% 1.2 QPSK在卫星通信中的重要性
@@ -59,40 +68,32 @@
 % 理解此帧结构是正确解析数据的关键。
 
 %% 2. 技术路径选择与系统架构
-
+%
 %% 2.1 技术路径概述
-% 本项目采用开放式设计理念，支持不同的技术实现路径，学生可根据自身技术背景和兴趣自主选择。
-% 为了更好地展开对原理的分析以及考虑到无线电爱好者朋友对自由度的需求，
-% 这里仅引用了纯Matlab实现，教学实践中也有同学使用matlab+simulink实现，未在本项目中详细描述：
-% 
-% 路径一：纯MATLAB编程实现（程梓睿方案）
+% 本项目采用纯MATLAB编程实现，专注于数字信号处理算法的深度理解和精确控制。
 %
-% - 特点：完全基于MATLAB脚本和函数实现，注重算法原理的深度理解
+% 这种实现方式具有以下特点：
 %
-% - 适合对象：希望深入理解算法细节、具备一定编程基础的学生
+% - 算法透明：每个处理步骤都是可见的，便于学习和调试
 %
-% - 核心优势：
+% - 参数可控：所有关键参数都可以精确调整和优化
 %
-%   - 算法参数可精确控制
+% - 理论结合：将抽象的数学公式转化为具体的代码实现
 %
-%   - 调试过程清晰可见
-%
-%   - 便于算法创新和优化
-%
-% - 主要实现文件：student_cases/14+2022210532+chengzirui/
+% - 扩展性强：便于添加新功能和改进现有算法
 
-%% 2.2 技术路径特点
-% 纯MATLAB路径（程梓睿方案）
+%% 2.2 系统架构特点
+% 本QPSK接收机采用模块化设计，每个模块专注于特定的信号处理功能：
 
-% 定义技术路径特点表格
-tech_features_table = table(...
+% 定义系统架构特点表格
+system_features_table = table(...
     {'学习深度'; '实现难度'; '调试便利性'; '扩展性'; '工程化程度'}, ...
     {'深入算法细节'; '中等-高'; '逐步调试'; '算法定制容易'; '基础'}, ...
     'VariableNames', {'维度', '特点'});
 
 % 显示表格
-disp('=== 纯MATLAB路径特点表 ===');
-disp(tech_features_table);
+disp('=== 纯MATLAB实现系统特点表 ===');
+disp(system_features_table);
 fprintf('\n');
 
 %% 3. 系统架构与处理流程
@@ -122,7 +123,7 @@ fprintf('\n');
 % 8.  解扰: 根据CCSDS标准，使用1+X^14+X^15多项式，对已同步的帧数据进行解扰，
 %     恢复出经LDPC编码后的原始数据。
 %
-% 9.  数据输出: 将恢复的比特流转换为字节，并写入文件。
+% 9.  数据输出: 将恢复的比特流转换为字节，并以十六进制格式显示。
 %     此时的数据包含AOS帧头、数据负载和LDPC校验位。
 
 %% 4. 环境准备与文件说明
@@ -166,39 +167,36 @@ fprintf('\n');
 % *   Ibytes.txt / Qbytes.txt: 输出文件。接收机成功运行后，恢复出的I路和Q路数据
 %     将以字节流的形式分别保存在这两个文本文件中。
 
-%% 4.3 快速复现步骤
-% 本节提供一个快速上手指南，帮助您快速运行程梓睿同学实现的QPSK接收机。
+%% 4.3 完整接收机调用演示
+% 本节提供完整的接收机调用代码示例，展示如何使用配置好的参数运行QPSK接收机。
 
-% 环境配置
-% 添加库路径
+% 环境初始化
 addpath('student_cases/14+2022210532+chengzirui/lib');
-
-% 清除工作区
 clear; clc;
 
-% 参数配置
-config.inputDataFilename = "data/small_sample_256k.bin"; % 使用小数据文件进行测试
-config.sourceSampleRate = 500e6; % 原始信号采样率
+% 接收机参数配置
+config.inputDataFilename = "data/small_sample_256k.bin"; % 测试数据文件
+config.sourceSampleRate = 500e6; % 原始信号采样率 500MHz
 config.resampleMolecule = 3; % 重采样分子
 config.resampleDenominator = 10; % 重采样分母
-config.fs = 150e6; % 重采样后的采样率
+config.fs = 150e6; % 重采样后的采样率 150MHz
 config.fb = 150e6; % 数传速率150Mbps
 config.startBits = 0; % 文件读取数据的起始点
 config.bitsLength = -1; % 自动处理文件中的所有数据
-config.rollOff = 0.33; % 滚降系数
+config.rollOff = 0.33; % RRC滤波器滚降系数
 
-% 输出文件配置
+% 输出配置
 output_dir = 'student_cases/14+2022210532+chengzirui/out';
-config.IBytesFilename = fullfile(output_dir, 'Ibytes.txt'); % I路比特输出文件
-config.QBytesFilename = fullfile(output_dir, 'Qbytes.txt'); % Q路比特输出文件
-config.IQBytesFilename = fullfile(output_dir, 'IQbytes.txt'); % IQ路交织输出文件
-config.keepRedundantData = true; % 新增：是否保留完整帧（同步字+冗余）
-config.FullFrameIBytesFilename = fullfile(output_dir, 'Ibytes_full.txt'); % 新增：完整帧I路输出
-config.FullFrameQBytesFilename = fullfile(output_dir, 'Qbytes_full.txt'); % 新增：完整帧Q路输出
-config.FullFrameIQBytesFilename = fullfile(output_dir, 'IQbytes_full.txt'); % 新增：完整帧IQ交织输出
-config.UnscrambledHexFilename = fullfile(output_dir, 'unscrambled_hex.txt'); % 新增：未解扰的十六进制数据输出
+config.IBytesFilename = fullfile(output_dir, 'Ibytes.txt');
+config.QBytesFilename = fullfile(output_dir, 'Qbytes.txt');
+config.IQBytesFilename = fullfile(output_dir, 'IQbytes.txt');
+config.keepRedundantData = true; % 是否保留完整帧数据
+config.FullFrameIBytesFilename = fullfile(output_dir, 'Ibytes_full.txt');
+config.FullFrameQBytesFilename = fullfile(output_dir, 'Qbytes_full.txt');
+config.FullFrameIQBytesFilename = fullfile(output_dir, 'IQbytes_full.txt');
+config.UnscrambledHexFilename = fullfile(output_dir, 'unscrambled_hex.txt');
 
-fprintf('将自动处理文件中的所有数据点\n');
+fprintf('系统配置完成，将自动处理文件中的所有数据点\n');
 
 % 运行接收机
 % 调用核心处理函数
@@ -211,7 +209,7 @@ disp(config.IBytesFilename);
 disp(config.QBytesFilename);
 
 %% 5. 核心模块详解与复现 (深度分析)
-% 本章节是教程的核心。以下将以程梓睿同学的实现为主，逐一深入每个关键模块，
+% 本章节是教程的核心。以下逐一深入每个关键模块，
 % 剖析其背后的理论、参数选择、代码实现，并指导您如何通过调试观察其效果。
 
 
@@ -238,7 +236,7 @@ disp(config.QBytesFilename);
 % I路和Q路数据交替存储。函数支持指定起始位置和读取长度，方便对大文件进行分段处理。
 
 %% 理论指导
-% 在数字通信系统中，接收机首先需要从存储介质（如文件）中加载原始的IQ数据。
+% 在数字通信系统中，接收机首先需要从存储介质中加载原始的IQ数据。
 %
 % 这些数据通常以二进制格式存储，以节省存储空间并提高读取效率。
 %
@@ -426,7 +424,7 @@ fprintf('  - 原始采样率：%.0f MHz\n', config.sourceSampleRate/1e6);
 fprintf('  - 重采样比例：%d/%d = %.3f\n', config.resampleMolecule, config.resampleDenominator, config.resampleMolecule/config.resampleDenominator);
 fprintf('  - 目标采样率：%.0f MHz\n', config.fs/1e6);
 
-% 执行重采样（参考学生案例实现）
+% 执行重采样
 fprintf('正在执行重采样...\n');
 tic;
 s_qpsk = resample(s_raw, config.resampleMolecule, config.resampleDenominator);
@@ -586,13 +584,7 @@ fprintf('======================\n\n');
 % 
 % 
 %% RRCFilterFixedLen实现代码
-% lib/RRCFilterFixedLen.m
-% 完整的脚本形式实现，接续5.1的实现
-
-% fs = config.fs;              % 采样率 150MHz（重采样后）- 已在5.1中定义
-% config.resampleMolecule = 3;  % 重采样分子 - 已在5.1中定义
-% config.resampleDenominator = 10; % 重采样分母 - 已在5.1中定义
-% s_qpsk                       % 输入信号（来自5.1重采样后的信号）- 已在5.1中生成
+% 完整的脚本形式实现
 
 % RRC滤波器特定参数
 fb = config.fs / 2;              % 符号率（采样率的一半，对应QPSK）
@@ -679,19 +671,19 @@ axis equal;
 
 
 %% 5.2.2 AGC归一化模块实现
-% 基于学生实现的AGC（自动增益控制）算法，将RRC滤波后的信号功率归一化
+% 实现AGC（自动增益控制）算法，将RRC滤波后的信号功率归一化
 % AGC是接收机中的重要模块，确保信号功率稳定，便于后续的同步和解调处理
 
 fprintf('正在执行AGC归一化...\n');
 tic;
 
-% AGC归一化实现（基于学生代码）
+% AGC归一化实现
 target_power = 1;      % 目标功率
 agc_step = 0.01;       % AGC步长参数
 gain = 1.0;            % 初始化增益
 s_qpsk_agc = zeros(size(s_rrc_filtered));  % 预分配输出
 
-% 实时逐点更新AGC（模拟时序处理）
+% 实时逐点更新AGC
 for n = 1:length(s_rrc_filtered)
     % 当前输入样本
     sample = s_rrc_filtered(n);
@@ -758,34 +750,16 @@ figure;
 scatterplot(s_qpsk_agc(1:1000));
 title('AGC归一化后星座图');
 
-%% 5.2.4 模块优化总结
-% 本模块优化要点：
+%% 5.2.4 模块处理总结
+% 本模块完成了RRC匹配滤波和AGC归一化两个关键功能：
 %
-% 1. 移除了重复的数据加载代码，依赖5.1模块已加载的数据
+% 1. RRC匹配滤波实现了信号的频谱整形，消除码间串扰
 %
-% 2. 专注于RRC滤波功能的核心实现和验证
+% 2. AGC归一化保证了信号幅度的稳定性，为后续处理提供良好条件
 %
-% 3. 修正了符号率与比特率的概念混淆问题
+% 3. 通过可视化分析可以直观观察滤波和归一化的效果
 %
-% 4. 增强了测试的鲁棒性，使用更合理的带宽验证阈值
-%
-% 5. 新增了AGC归一化模块，基于学生实现完成信号功率归一化
-%
-% 6. 提供了完整的效果可视化功能，便于理解RRC滤波器和AGC的作用
-% 
-% 后续模块可以直接使用变量s_qpsk_agc作为输入
-
-%% 测试执行与验证说明
-%
-% 1. 本优化后的5.2模块包含RRC滤波和AGC归一化功能，不再重复加载数据
-%
-% 2. 频谱观察：通过上述可视化代码可观察到滤波前后信号频谱的明显变化
-%
-% 3. 星座图分析：可以看到RRC滤波和AGC归一化对星座图的整形效果
-%
-% 4. 功率监控：AGC模块确保信号功率稳定在目标值附近
-%
-% 5. 模块间数据传递：后续模块可直接使用s_qpsk_agc变量
+% 后续的定时同步模块将使用变量s_qpsk_agc作为输入信号。
 
 
 %% 5.3 模块详解: Gardner定时同步
@@ -829,9 +803,8 @@ title('AGC归一化后星座图');
 %
 % *   如果采样点滞后，e[k] 会产生一个符号相反的值。
 
-%% Farrow插值器优化（程梓睿创新实现）
-% 在程梓睿的纯MATLAB实现中，采用了3阶Farrow立方插值器进行精确的分数延迟插值，
-% 这是该实现的技术亮点之一。
+%% Farrow插值器优化
+% 实现中采用了3阶Farrow立方插值器进行精确的分数延迟插值。
 % 
 % Farrow插值器原理：
 % Farrow插值器能够实现任意分数延迟的高精度插值，采用3阶立方多项式结构。
@@ -891,12 +864,12 @@ title('AGC归一化后星座图');
 % 在 lib/GardnerSymbolSync.m 中，核心逻辑在 for 循环内。
 
 %% Gardner定时同步实现代码
-% 接收5.2节的输出数据
+% 接收前面模块的输出数据
 s_qpsk_input = s_qpsk_agc;  % 使用AGC归一化后的信号作为输入
 
 % Gardner算法参数配置
-B_loop = 0.0001; % 归一化环路带宽 (与学生实现保持一致)
-zeta = 0.707;    % 阻尼系数 (经典最优值)
+B_loop = 0.0001; % 归一化环路带宽
+zeta = 0.707;    % 阻尼系数
 
 fprintf('Gardner定时同步参数设置:\n');
 fprintf('  - 环路带宽 B_loop: %.4f\n', B_loop);
@@ -1349,7 +1322,7 @@ fprintf('\n变量传递：sync_output -> 下一模块 (载波同步)\n');
 
 %% 载波同步实现代码
 
-% 接收5.3模块的输出信号
+% 接收前面模块的输出信号
 x = sync_output;  % 使用Gardner定时同步后的信号作为输入
 
 % PLL参数配置
@@ -1602,10 +1575,8 @@ fprintf('- 相位校正: y_out[n] = y_in[n] * exp(-jθ[n])\n');
 % 后续模块可以直接使用变量pll_output作为输入
 fprintf('\n变量传递：pll_output -> 下一模块 (相位模糊恢复与帧同步)\n');
 
-%% 5.5 模块详解: 相位模糊恢复、帧同步与解扰（学生案例实现）
-% 根据学生案例的实现方式，重新实现相位模糊恢复、帧同步和解扰功能
-%
-% 采用学生案例中的FrameSync.m和FrameScramblingModule.m的精确实现
+%% 5.5 模块详解: 相位模糊恢复、帧同步与解扰
+% 实现相位模糊恢复、帧同步和解扰功能
 
 %% 5.5.1 相位模糊恢复理论原理
 % QPSK调制中的相位模糊问题是由于星座图的4重旋转对称性引起的
@@ -1719,7 +1690,7 @@ fprintf('\n变量传递：pll_output -> 下一模块 (相位模糊恢复与帧�
 %
 % 解扰验证机制:
 %
-% 学生案例采用帧尾验证位检查解扰正确性:
+% 本实现采用帧尾验证位检查解扰正确性:
 %
 % - 检查位置: 第8159位和第8160位
 %
@@ -1729,7 +1700,7 @@ fprintf('\n变量传递：pll_output -> 下一模块 (相位模糊恢复与帧�
 %
 % 自适应IQ路交换检测:
 %
-% 由于传输过程中可能发生IQ路交换，学生案例实现了智能检测机制:
+% 由于传输过程中可能发生IQ路交换，本实现了智能检测机制:
 %
 % 1. 首先按正常IQ顺序尝试解扰
 %
@@ -1742,24 +1713,28 @@ fprintf('\n变量传递：pll_output -> 下一模块 (相位模糊恢复与帧�
 % 这种设计大大提高了系统的鲁棒性和实用性
 %
 
-%% 5.5.4 学生案例实现特点总结
-% 学生案例的FrameScramblingModule.m实现特点：
+%% 5.5.4 解扰实现特点
+% 本实现采用CCSDS标准的解扰算法，具有以下特点：
 %
-% 1. 去除前32位同步字
+% 1. 采用标准CCSDS生成多项式 G(x) = 1 + X¹⁴ + X¹⁵
 %
-% 2. I路初相：111111111111111
+% 2. 去除前32位同步字后进行解扰
 %
-% 3. Q路初相：000000011111111
+% 3. I路初相：111111111111111 (15位全1)
 %
-% 4. 检查帧尾8159、8160位是否为00
+% 4. Q路初相：000000011111111 (前8位0，后7位1) 
 %
-% 5. 自动IQ路交换检测
+% 5. 检查帧尾8159、8160位是否为00作为验证条件
+%
+% 6. 自动IQ路交换检测功能
+%
+% 这种设计确保了与标准协议的完全兼容性和高可靠性。
 
-%% 5.5.5 帧同步实现（基于学生案例）
+%% 5.5.5 帧同步实现
 % 接收5.4模块的输出信号
 s_symbol = pll_output;  % 使用PLL载波同步后的信号作为输入
 
-fprintf('=== 5.5模块：基于学生案例的相位模糊恢复与帧同步 ===\n');
+fprintf('=== 5.5模块：相位模糊恢复与帧同步 ===\n');
 
 %% 定义同步字和帧参数
 sync_bits_length = 32;
@@ -1777,7 +1752,7 @@ fprintf('  - 同步字: 1ACFFC1D\n');
 fprintf('  - 帧长度: %d 符号\n', frame_len);
 fprintf('  - 输入信号长度: %d 符号\n', length(s_symbol));
 
-%% 主循环：搜索帧同步位置（修正的学生案例实现）
+%% 主循环：搜索帧同步位置
 for m = 1 : length(s_symbol) - frame_len
     s_frame_original = s_symbol(1, m : m + frame_len - 1);  % 提取一个可能的帧
 
@@ -1836,11 +1811,11 @@ if ~isempty(sync_index_list)
     end
 end
 
-%% 5.5.7 解扰实现（基于学生案例）
-% 使用学生案例的FrameScramblingModule.m实现
+%% 5.5.7 解扰实现
+% 实现标准的CCSDS解扰算法
 
 if ~isempty(sync_frame_bits)
-    fprintf('\n=== 5.5模块：基于学生案例的解扰处理 ===\n');
+    fprintf('\n=== 5.5模块：解扰处理 ===\n');
     
     % 获取数据形状
     [rows, columns] = size(sync_frame_bits);
@@ -1877,7 +1852,7 @@ if ~isempty(sync_frame_bits)
        I_deScrambling = ScramblingModule(I_row_bits, InPhase_I);
        Q_deScrambling = ScramblingModule(Q_row_bits, InPhase_Q);
        
-       % 检查是否合法（学生案例：检查8159、8160位）
+       % 检查是否合法（检查8159、8160位）
        if I_deScrambling(8159) == 0 && I_deScrambling(8160) == 0 && Q_deScrambling(8159) == 0 && Q_deScrambling(8160) == 0
            disp("序列合法");
            I_array(m,:) = I_deScrambling;
@@ -1948,7 +1923,7 @@ if ~isempty(sync_frame_bits)
     end
     
     % 解扰结果可视化
-    figure('Name', '学生案例解扰结果分析', 'Position', [150, 150, 1200, 800]);
+    figure('Name', '解扰结果分析', 'Position', [150, 150, 1200, 800]);
     
     % 子图1：I路数据分布（前5帧）
     subplot(2,2,1);
@@ -2025,7 +2000,7 @@ else
     Q_array = [];
 end
 
-%% 学生案例辅助函数实现
+%% 解调输出辅助函数实现
 
 % ByteArrayToBinarySourceArray函数实现
 function y = ByteArrayToBinarySourceArray(x, mode)
@@ -2086,15 +2061,15 @@ function scrambled_data = ScramblingModule(data, InPhase)
     end
 end
 
-    %% 5.5.8 解调输出十六进制数显示（参考学生案例实现）
-    % 将解扰后的I/Q路二进制数据转换为十六进制格式输出
-    % 使用包含同步字的完整帧数据进行显示
+    %% 5.5.8 解调输出十六进制数显示
+    % 将解扰后的I/Q路二进制数据转换为十六进制格式输出，便于数据验证和分析
+    % 显示完整的帧结构，包括同步字1ACFFC1D
     %
-    % 这是学生案例中重要的数据验证环节，通过十六进制格式可以：
+    % 十六进制显示功能：
     % 1. 验证解扰数据的正确性 
     % 2. 便于与标准数据进行对比
     % 3. 为后续LDPC译码提供标准输入格式
-    % 4. 显示完整的帧结构，包括同步字1ACFFC1D
+    % 4. 显示完整的帧结构信息
     
     fprintf('\n=== 5.5.8 解调输出十六进制数显示（含同步字）===\n');
     
@@ -2158,7 +2133,7 @@ end
             fprintf('\n');
         end
         
-        % 显示I/Q路交织的十六进制数据（学生案例常用格式）
+        % 显示I/Q路交织的十六进制数据
         fprintf('\nI/Q交织数据（前%d字节，含同步字）：\n', min(bytes_per_display, complete_bytes));
         
         for byte_idx = 1:min(bytes_per_display, complete_bytes)
@@ -2213,7 +2188,7 @@ end
             fprintf('  Q路同步字: %s %s\n', Q_sync_hex, iif(strcmp(Q_sync_hex, '1ACFFC1D'), '✓', '✗'));
         end
         
-        % 显示帧尾验证位（学生案例的成功标准）
+        % 显示帧尾验证位（系统的成功标准）
         fprintf('帧尾验证位检查（解扰数据部分）：\n');
         % 对应到原始I_array的验证位
         if size(I_array, 2) >= 8160
@@ -2231,43 +2206,45 @@ end
     fprintf('  - 前4个字节应显示同步字1ACFFC1D\n');
     fprintf('  - 第5字节开始为解扰后的AOS帧数据\n');
     fprintf('  - 可用于与标准测试数据进行对比验证\n');
-    fprintf('  - 符合学生案例中的数据输出格式要求\n');
+    fprintf('  - 符合标准数据输出格式要求\n');
 
-%% 5.5.9 学生案例实现技术总结
-fprintf('\n=== 5.5节技术总结（修正的学生案例实现） ===\n');
-fprintf('✓ 帧同步：采用4次旋转穷举法，每次90°（修正了原代码的bug）\n');
-fprintf('✓ 相位恢复：通过同步字直接匹配确定正确相位\n');
-fprintf('✓ 解扰算法：严格遵循学生案例的ScramblingModule实现\n');
-fprintf('✓ IQ交换检测：自动检测并纠正IQ路交换问题\n');
+%% 5.5.9 技术实现总结
+fprintf('\n=== 5.5节QPSK接收机核心模块总结 ===\n');
+fprintf('✓ 帧同步：采用4相位旋转穷举法，每次90°相位测试\n');
+fprintf('✓ 相位恢复：通过同步字1ACFFC1D直接匹配确定正确相位\n');
+fprintf('✓ 解扰算法：基于CCSDS标准的1+X^14+X^15多项式实现\n');
+fprintf('✓ IQ交换检测：自动检测并纠正传输过程中的IQ路交换\n');
 fprintf('✓ 结果验证：通过8159-8160位验证解扰正确性\n');
-fprintf('✓ 数据完整性：保持原始数据不被修改，确保相位测试正确\n');
-fprintf('\n核心参数（学生案例）：\n');
-fprintf('- 同步字: 1ACFFC1D (32位)\n');
-fprintf('- 帧长度: 8192符号\n');
-fprintf('- 测试相位: 0°、90°、180°、270°（完整4相位）\n');
-fprintf('- I路初相: 111111111111111\n');
-fprintf('- Q路初相: 000000011111111\n');
-fprintf('- 验证位置: 8159-8160位\n');
+fprintf('✓ 数据完整性：保持完整的帧结构，便于后续分析\n');
+fprintf('\n核心参数配置：\n');
+fprintf('- 同步字: 1ACFFC1D (32位CCSDS标准)\n');
+fprintf('- 帧长度: 8192符号 (符合AOS帧格式)\n');
+fprintf('- 测试相位: 0°、90°、180°、270°完整覆盖\n');
+fprintf('- I路初相: 111111111111111 (15位全1)\n');
+fprintf('- Q路初相: 000000011111111 (前8位0，后7位1)\n');
+fprintf('- 验证位置: 8159-8160位 (帧尾验证标志)\n');
 
-% 重要说明
-fprintf('\n重要修正：\n');
-fprintf('- 原学生案例代码存在bug：s_frame = s_frame * (1i)会修改原始数据\n');
-fprintf('- 导致只测试3个相位（90°、180°、270°），缺少0°相位测试\n');
-fprintf('- 现已修正：为每个相位创建独立副本，测试完整的4个相位\n');
-fprintf('- 这应该能够找到更多的同步位置，提高同步成功率\n');
+% 技术特点说明
+fprintf('\n技术实现特点：\n');
+fprintf('- 每个相位测试都使用独立的信号副本，避免数据污染\n');
+fprintf('- 完整的4相位覆盖确保最大的同步成功概率\n');
+fprintf('- 自适应IQ路交换检测提高系统鲁棒性\n');
+fprintf('- 严格的验证位检查确保解扰结果的可靠性\n');
 
 % 输出最终结果
 if ~isempty(I_array) && ~isempty(Q_array)
-    fprintf('\n最终输出变量：\n');
+    fprintf('\n输出数据格式：\n');
     fprintf('- I_array: I路解扰数据 (%d帧 x %d比特)\n', size(I_array, 1), size(I_array, 2));
     fprintf('- Q_array: Q路解扰数据 (%d帧 x %d比特)\n', size(Q_array, 1), size(Q_array, 2));
-    fprintf('这些数据与学生案例的输出格式完全一致\n');
+    fprintf('- I_array_full/Q_array_full: 包含同步字的完整帧数据\n');
+    fprintf('- 数据格式符合CCSDS AOS标准\n');
     
 else
     fprintf('\n警告：未产生有效输出数据\n');
+    fprintf('请检查前序模块的处理结果\n');
 end
 
-fprintf('====================\n\n');
+fprintf('========================================\n\n');
 
 %% 6. 帧头验证与运行结果分析
 % 基于5.5节输出的I_array和Q_array数据，进行AOS帧头验证和完整性检查
@@ -2275,9 +2252,9 @@ fprintf('====================\n\n');
 % 这是验证接收机正确性的关键步骤
 
 %% 6.0 验证基础
-% 学生案例中的验证方法和成功标准
+% 验证数据处理的方法和成功标准
 %
-% 学生案例验证流程:
+% 验证流程:
 %
 % 1. 帧同步验证: 检查是否找到1ACFFC1D同步字
 %
@@ -2287,7 +2264,7 @@ fprintf('====================\n\n');
 %
 % 4. 数据完整性: 统计解扰成功的帧数量
 %
-% 成功判断标准 (基于学生报告):
+% 成功判断标准:
 %
 % - 找到同步帧且解扰验证位通过 = 成功
 %
@@ -2404,7 +2381,7 @@ if exist('I_array', 'var') && exist('Q_array', 'var') && ~isempty(I_array) && ~i
                 fprintf('\n💡 说明：帧计数器非连续是正常现象，原因：\n');
                 fprintf('  - 帧同步在信号流中搜索到的帧可能在时间上不连续\n');
                 fprintf('  - 实际卫星数据中可能存在丢帧、重传等情况\n');
-                fprintf('  - 学生案例通过8159-8160验证位判断解扰成功，而非帧连续性\n');
+                fprintf('  - 本系统通过8159-8160验证位判断解扰成功，而非帧连续性\n');
             end
         end
         
@@ -2422,10 +2399,10 @@ end
 %% 6.2 数据完整性与质量分析
 % 基于5.5节输出数据进行质量评估
 
-%% 6.2.1 学生案例数据质量评估方法
-% 基于学生实现的质量评估指标
+%% 6.2.1 数据质量评估方法
+% 基于标准评估指标
 %
-% 核心评估指标 (来自学生案例):
+% 核心评估指标:
 %
 % 1. 解扰验证位检查:
 %
@@ -2433,7 +2410,7 @@ end
 %
 %    - 成功条件: 两位都必须为00
 %
-%    - 这是学生案例判断解扰成功的唯一标准
+%    - 这是本系统判断解扰成功的唯一标准
 %
 % 2. I/Q路平衡检测:
 %
@@ -2451,7 +2428,7 @@ end
 %
 %    - 用于评估解扰效果
 %
-% 学生案例质量标准:
+% 系统质量标准:
 %
 % - 验证位全部通过 = 完美
 %
@@ -2484,8 +2461,8 @@ if exist('I_array', 'var') && exist('Q_array', 'var') && ~isempty(I_array) && ~i
         fprintf('  - 数据分布: 异常（偏离理想均匀分布）\n');
     end
     
-    % 检查解扰验证位（8159-8160位）- 学生案例的核心成功标准
-    fprintf('\n=== 解扰验证检查（学生案例核心标准）===\n');
+    % 检查解扰验证位（8159-8160位）- 系统的核心成功标准
+    fprintf('\n=== 解扰验证检查（系统核心标准）===\n');
     valid_frames = 0;
     for frame_idx = 1:size(I_array, 1)
         if I_array(frame_idx, 8159) == 0 && I_array(frame_idx, 8160) == 0 && ...
@@ -2503,8 +2480,8 @@ if exist('I_array', 'var') && exist('Q_array', 'var') && ~isempty(I_array) && ~i
     fprintf('  - 验证位通过帧数: %d/%d\n', valid_frames, size(I_array, 1));
     fprintf('  - 解扰验证成功率: %.1f%%\n', validation_rate);
     
-    % 学生案例的质量评估标准
-    fprintf('\n📊 基于学生案例标准的质量评估：\n');
+    % 系统的质量评估标准
+    fprintf('\n📊 基于标准的质量评估：\n');
     if validation_rate == 100
         fprintf('  - 解扰质量: 完美 🌟 (所有帧验证位通过)\n');
     elseif validation_rate >= 90
@@ -2519,9 +2496,9 @@ if exist('I_array', 'var') && exist('Q_array', 'var') && ~isempty(I_array) && ~i
     
     % 重要提示
     if validation_rate >= 70
-        fprintf('\n🎉 学生案例成功标准：验证位通过率≥70%%，当前系统已达标！\n');
+        fprintf('\n🎉 系统成功标准：验证位通过率≥70%%，当前系统已达标！\n');
         fprintf('💡 关键要点：\n');
-        fprintf('  - 8159-8160验证位是学生案例判断解扰成功的唯一标准\n');
+        fprintf('  - 8159-8160验证位是本系统判断解扰成功的唯一标准\n');
         fprintf('  - 帧计数器非连续不影响解扰成功判定\n');
         fprintf('  - I/Q路自动交换检测确保了解扰的鲁棒性\n');
     else
@@ -2587,10 +2564,10 @@ end
 %% 6.3 接收机性能总结报告
 % 汇总整个接收机链路的处理结果和性能评估
 
-%% 6.3.1 学生案例性能评估标准
-% 基于学生报告的系统性能评估方法
+%% 6.3.1 系统性能评估标准
+% 基于实际系统的性能评估方法
 %
-% 学生案例评估体系:
+% 系统评估体系:
 %
 % 1. 核心成功标准:
 %
@@ -2616,7 +2593,7 @@ end
 %
 %    - 可用于后续LDPC译码处理
 %
-% 学生案例质量等级:
+% 系统质量等级:
 %
 % - 完美: 验证位通过率100%
 %
@@ -2628,7 +2605,7 @@ end
 %
 % - 需要优化: 验证位通过率<50%
 %
-% 关键理解点 (学生报告强调):
+% 关键理解点：
 %
 % - 帧计数器不连续是正常现象，不影响解扰成功
 %
@@ -2666,8 +2643,8 @@ if exist('I_array', 'var') && exist('Q_array', 'var') && ~isempty(I_array) && ~i
     fprintf('  - 可转换为字节格式输出到文本文件\n'); 
     fprintf('  - 建议进一步进行LDPC译码以获取原始用户数据\n');
     
-    % 学生案例成功标准总结
-    fprintf('\n🔍 学生案例成功标准回顾：\n');
+    % 系统成功标准总结
+    fprintf('\n🔍 系统成功标准回顾：\n');
     fprintf('═══════════════════════════════════════\n');
     fprintf('✓ 帧同步：找到1ACFFC1D同步字，通过4相位穷举\n');
     fprintf('✓ 解扰成功：8159-8160验证位全为00\n');
@@ -2918,7 +2895,7 @@ fprintf('\n');
 %
 %   □ 能够分析和诊断系统问题
 %
-%   □ 理解学生案例的成功判断标准
+%   □ 理解系统的成功判断标准
 %
 % 应用能力 (实践应用)：
 %
