@@ -171,7 +171,6 @@ fprintf('\n');
 % 本节提供完整的接收机调用代码示例，展示如何使用配置好的参数运行QPSK接收机。
 
 % 环境初始化
-addpath('student_cases/14+2022210532+chengzirui/lib');
 clear; clc;
 
 % 接收机参数配置
