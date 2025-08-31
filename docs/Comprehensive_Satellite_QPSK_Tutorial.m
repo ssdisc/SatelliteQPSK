@@ -180,7 +180,7 @@ config.sourceSampleRate = 500e6; % 原始信号采样率 500MHz
 config.resampleMolecule = 3; % 重采样分子
 config.resampleDenominator = 10; % 重采样分母
 config.fs = 150e6; % 重采样后的采样率 150MHz
-config.fb = 150e6; % 数传速率150Mbps
+config.fb = 150e6; % 比特率150Mbps（注意：这里是比特率而非符号率）
 config.startBits = 0; % 文件读取数据的起始点
 config.bitsLength = -1; % 自动处理文件中的所有数据
 config.rollOff = 0.33; % RRC滤波器滚降系数
@@ -257,6 +257,7 @@ disp(config.QBytesFilename);
 clc;clear all;
 config.inputDataFilename = "data/small_sample_256k.bin"; % 数据文件路径
 config.sourceSampleRate = 500e6; % 原始信号采样率
+config.fb = 150e6; % 比特率150Mbps（注意：这里是比特率而非符号率）
 
 % 检查数据文件是否存在，不存在则创建模拟数据
 if ~exist(config.inputDataFilename, 'file')
@@ -567,7 +568,8 @@ fprintf('======================\n\n');
 %
 % *   符号率 (Symbol Rate / Baud Rate, f_sym): 每秒传输的符号数。
 %     由于QPSK每个符号承载2个比特，因此符号率为 f_sym = f_bit / 2 = 75 MBaud/s。
-%     在代码和后续讨论中，fb 常常指代符号率。
+%     注意：在本项目的配置中，config.fb实际上指代的是比特率(150Mbps)，
+%     而真正的符号率需要通过 f_sym = config.fb / 2 = 75 MBaud/s 来计算。
 % 
 % 物理意义: alpha 决定了信号占用的实际带宽。信号带宽 BW = (1 + alpha) * f_sym。
 % 
@@ -587,18 +589,18 @@ fprintf('======================\n\n');
 % 完整的脚本形式实现
 
 % RRC滤波器特定参数
-fb = config.fs / 2;              % 符号率（采样率的一半，对应QPSK）
+f_symbol = config.fb / 2;       % 真正的符号率（比特率除以2，对应QPSK）
 alpha = 0.33;                    % 滚降系数
 mode = 'rrc';                    % 滤波器模式：'rrc'表示根升余弦
 x = s_qpsk;                      % 输入信号
 
 % 滤波器设计参数
 span = 8; % 滤波器长度（单位符号数），即滤波器覆盖8个符号的长度
-sps = floor(config.fs / fb); % 每符号采样数 (Samples Per Symbol)
+sps = floor(config.fs / f_symbol); % 每符号采样数 (Samples Per Symbol)
 
 fprintf('RRC滤波器参数：\n');
 fprintf('  - 采样率 fs: %.0f MHz (来自5.1模块)\n', config.fs/1e6);
-fprintf('  - 符号率 fb: %.0f MBaud\n', fb/1e6);
+fprintf('  - 符号率 f_symbol: %.0f MBaud\n', f_symbol/1e6);
 fprintf('  - 每符号采样数 sps: %d\n', sps);
 fprintf('  - 滚降系数 alpha: %.2f\n', alpha);
 fprintf('  - 滤波器长度 span: %d 符号\n', span);
@@ -617,6 +619,9 @@ elseif strcmpi(mode, 'rc')
 else
     error("Unsupported mode. Use 'rrc' or 'rc'.");
 end
+
+% 滤波处理
+y = conv(x, h, 'same');
 
 fprintf('  - 滤波器系数长度: %d\n', length(h));
 fprintf('  - 理论系数长度: %d (span * sps + 1)\n', span * sps + 1);
@@ -639,7 +644,7 @@ fprintf('  - 滤波器引入的群延迟: %.1f 个样本\n', (length(h)-1)/2);
 %
 % 1. span参数：滤波器长度，单位为符号数。值为8表示滤波器覆盖8个符号的长度。
 %
-% 2. sps参数：每符号采样数(Samples Per Symbol)，通过floor(fs / fb)计算得到。
+% 2. sps参数：每符号采样数(Samples Per Symbol)，通过floor(fs / f_symbol)计算得到。
 %
 % 3. mode参数：指定滤波器类型，'rrc'表示根升余弦滤波器，'rc'表示升余弦滤波器。
 %
@@ -658,8 +663,8 @@ title('RRC滤波后的信号频谱');
 xlabel('频率 (Hz)');
 ylabel('功率谱密度 (dB/Hz)');
 grid on;
-% 您应该能看到信号的功率被集中在符号率带宽 [-fb/2, fb/2] 附近，
-% 总带宽约为 (1+alpha)*fb = (1+0.33)*75 ≈ 100 MHz。频谱边缘有平滑的滚降。
+% 您应该能看到信号的功率被集中在符号率带宽 [-f_symbol/2, f_symbol/2] 附近，
+% 总带宽约为 (1+alpha)*f_symbol = (1+0.33)*75 ≈ 100 MHz。频谱边缘有平滑的滚降。
 
 % 3. 观察星座图：此时绘制星座图，由于未经任何同步，
 %    它看起来会是一个非常模糊的、旋转的环形。这是正常的。
@@ -1327,24 +1332,34 @@ x = sync_output;  % 使用Gardner定时同步后的信号作为输入
 
 % PLL参数配置
 fc = 0;  % 预估的载波频率偏移（Hz）
-fs = fb;  % 符号率作为PLL的采样率
+fs_pll = config.fs;  % PLL工作采样率（实际采样率150MHz）
+fb_bit = config.fb;  % 比特率（150MHz）
+f_symbol = config.fb / 2;  % 符号率（75MHz，QPSK每符号2比特）
+% 注意：fs_pll采样率150MHz，符号率75MHz，所以sps = fs_pll/f_symbol = 2
 pll_bandwidth = 0.02;  % 归一化环路带宽
 pll_damping = 0.707;  % 阻尼系数
 
 fprintf('载波同步PLL参数配置:\n');
 fprintf('  - 输入信号长度: %d 符号\n', length(x));
 fprintf('  - 预估频偏 fc: %.1f Hz\n', fc);
-fprintf('  - 符号率 fs: %.0f MBaud\n', fs/1e6);
+fprintf('  - PLL采样率: %.0f MHz\n', fs_pll/1e6);
+fprintf('  - 比特率: %.0f Mbps\n', fb_bit/1e6);
+fprintf('  - 符号率: %.0f MBaud\n', f_symbol/1e6);
+fprintf('  - 每符号采样数: %.1f\n', fs_pll/f_symbol);
 fprintf('  - 环路带宽: %.3f\n', pll_bandwidth);
 fprintf('  - 阻尼系数: %.3f\n', pll_damping);
 
-% 计算PLL增益参数
-Wn = 2 * pi * pll_bandwidth;  % 归一化自然频率
-kp = 2 * pll_damping * Wn;     % 比例增益
-ki = Wn^2;                     % 积分增益
+% 计算PLL增益参数 - 使用标准二阶数字PLL设计公式
+Bn = pll_bandwidth;  % 归一化环路带宽
+zeta = pll_damping;  % 阻尼系数
+
+% 标准二阶数字PLL参数公式（更准确的实现）
+kp = 4 * zeta * Bn / (1 + 2*zeta*Bn + Bn^2);   % 比例增益
+ki = 4 * Bn^2 / (1 + 2*zeta*Bn + Bn^2);        % 积分增益
 
 fprintf('  - 比例增益 kp: %.6f\n', kp);
 fprintf('  - 积分增益 ki: %.6f\n', ki);
+fprintf('  - 注意：使用标准二阶数字PLL设计公式，与简化公式不同\n');
 
 %% PLL主实现
 % 初始化变量
@@ -1391,7 +1406,7 @@ for m = 1:length(x)
     theta_integral = theta_integral + phase_error;
     
     % 更新NCO相位（包含前馈频率补偿）
-    theta = theta + theta_delta + 2 * pi * fc / fs;
+    theta = theta + theta_delta + 2 * pi * fc / fs_pll;
     
     % 限制相位在[0, 2pi]范围内
     theta = mod(theta, 2 * pi);
@@ -1825,6 +1840,7 @@ for m = 1 : length(s_symbol) - frame_len
     s_frame_original = s_symbol(1, m : m + frame_len - 1);  % 提取一个可能的帧
 
     % 处理相位模糊（测试4个相位：0°、90°、180°、270°）
+    % 重要：必须测试所有4个相位，包括0°原始相位
     for phase_idx = 0 : 3
         % 为每个相位创建独立的副本，避免修改原始数据
         if phase_idx == 0
