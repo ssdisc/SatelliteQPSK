@@ -2409,8 +2409,8 @@ if exist('I_array', 'var') && exist('Q_array', 'var') && ~isempty(I_array) && ~i
     if frame_bits >= header_bits
         fprintf('正在分析AOS帧头结构...\n\n');
         
-        % 对前3帧进行帧头分析
-        frames_to_analyze = min(3, num_frames);
+        % 对所有帧进行帧头分析
+        frames_to_analyze = num_frames;
         
         for frame_idx = 1:frames_to_analyze
             fprintf('--- 帧 %d AOS帧头分析 ---\n', frame_idx);
