@@ -1,5 +1,4 @@
 # 案例：基于真实卫星数据的QPSK信号接收与解调项目
-*——一个从53.7GB真实数据中解出"70"字样的通信系统实战*
 
 ## 1. 任务的来龙去脉
 
@@ -54,7 +53,7 @@
 - **总大小**：53.7GB真实SAR卫星IQ数据
 - **数据格式**：int16复数数据，实部和虚部交替存储
 - **数据获取**：百度网盘链接 https://pan.baidu.com/s/1EZNwXBJPChvZMmNumear2g?pwd=j6wr
-- **测试数据**：还提供了1MB的`small_sample_256k.bin`用于快速验证
+- **测试数据**：从完整数据中提取了1MB的`small_sample_256k.bin`用于快速验证
 
 看到这些参数的时候，我就知道这个项目不会简单。500MHz的采样率、53.7GB的数据量、真实的工程环境...这些都意味着我们要面对的是一个真正的工程级挑战。
 
@@ -214,26 +213,95 @@ end
 - `FrameSync.m` - 帧同步检测
 - `FrameScramblingModule.m` - 解扰算法
 
+### 2.2.5 AGC自动增益控制——信号幅度的"稳定器"
+
+在RRC滤波之前，还有一个重要但经常被忽视的环节：AGC（自动增益控制）。真实的卫星信号由于传播路径、设备增益等因素，幅度可能变化很大，需要先进行幅度归一化。
+
+**AGC算法的具体实现：**
+
+我实现了一个自适应的AGC算法，能够实时跟踪信号功率并调整增益：
+
+```matlab
+function y = AGC_Normalize(x, target_power, agc_step)
+% 输入：x - 输入信号
+%      target_power - 目标功率（通常设为1）
+%      agc_step - AGC步长（控制收敛速度）
+
+% 初始化增益
+gain = 1.0;
+y = zeros(size(x));
+
+% 实时逐点更新AGC（模拟硬件时序处理）
+for n = 1:length(x)
+    % 当前输入样本
+    sample = x(n);
+    
+    % 计算当前输出功率
+    current_power = abs(sample * gain)^2;
+    
+    % 功率误差
+    error = target_power - current_power;
+    
+    % 更新增益（使用简单的比例控制器）
+    gain = gain + agc_step * error * gain;
+    
+    % 防止增益爆炸或过小
+    if gain < 1e-6
+        gain = 1e-6;
+    elseif gain > 1e6
+        gain = 1e6;
+    end
+    
+    % 应用增益得到输出
+    y(n) = gain * sample;
+end
+end
+```
+
+**算法关键参数：**
+- **目标功率**：target_power = 1（归一化功率）
+- **AGC步长**：agc_step = 0.01（经验值，平衡收敛速度和稳定性）
+- **增益限制**：[1e-6, 1e6]（防止数值异常）
+
+**AGC的重要性：**
+1. **动态范围适配**：将不同幅度的输入信号统一到合适的动态范围
+2. **后级算法稳定**：为后续的定时同步、载波同步提供稳定的信号幅度
+3. **硬件兼容性**：模拟真实硬件中的AGC电路行为
+
 ### 2.3 第三步：RRC滤波的第一次"翻车"
 
 有了架构设计，我开始实现第一个模块：RRC（根升余弦）滤波器。这个看起来应该是最简单的模块，结果给了我第一个深刻的教训。
 
 **第一次尝试——直接套用教科书公式：**
 
-我找到了RRC滤波器的标准公式，写了一个函数：
+我最初试图从头实现RRC滤波器的数学公式，但很快发现这是个坑。经过反复调试，我最终采用了MATLAB内置的`rcosdesign`函数来生成滤波器系数，这样既保证了正确性，又提高了效率：
 
 ```matlab
-function h = rrcFilter(alpha, span, sps)
-    % alpha: 滚降系数 0.33
-    % span: 滤波器长度 8个符号  
-    % sps: 每符号采样点数 2
-    
-    % 按照教科书公式计算滤波器系数
-    % ... 一大堆数学公式
+function y = RRCFilterFixedLen(fb, fs, x, alpha, mode)
+% 参数
+span = 8; % 滤波器长度（单位符号数）
+sps = floor(fs / fb); % 每符号采样数
+
+% 生成滤波器
+if strcmpi(mode, 'rrc')
+    % Root Raised Cosine - 用于接收端匹配滤波
+    h = rcosdesign(alpha, span, sps, 'sqrt');
+elseif strcmpi(mode, 'rc')
+    % Raised Cosine - 用于发送端成形滤波
+    h = rcosdesign(alpha, span, sps, 'normal');
+else
+    error('Unsupported mode. Use ''rrc'' or ''rc''.');
+end
+
+% 卷积，保持输入输出长度一致
+y = conv(x, h, 'same');
 end
 ```
 
-结果滤波后的信号完全不对，频谱一团糟。我开始怀疑是不是公式抄错了。
+**关键参数的选择：**
+- **滚降系数α = 0.33**：这是工程中常用的优化值，在频谱效率和抗干扰能力之间取得平衡
+- **滤波器长度span = 8个符号**：足够长以确保良好的频率特性，但不会过度增加计算复杂度
+- **采样率匹配**：`sps = floor(fs/fb)`确保滤波器与信号的采样率匹配
 
 **第二次尝试——发现采样率的坑：**
 
@@ -246,6 +314,30 @@ end
 resampleRatio = 150e6 / 500e6; % 0.3
 resampledData = resample(rawData, 3, 10); % 3/10 = 0.3
 ```
+
+**重采样的关键考虑：**
+
+重采样不是简单的降采样，需要仔细设计：
+
+1. **目标采样率选择**：150MHz = 75MBaud × 2，确保每符号正好2个采样点
+2. **抗混叠滤波**：`resample`函数内置了抗混叠滤波器，防止频谱混叠
+3. **计算效率**：从500MHz降到150MHz，数据量减少70%，大大降低后续计算负担
+
+**第三次尝试——终于成功：**
+
+重采样后，RRC滤波器终于正常工作了。我能看到清晰的眼图和正确的频谱特性：
+
+```matlab
+% 重采样后的RRC滤波
+fs_new = 150e6;  % 新的采样率
+fb = 75e6;       % 符号率
+sps = fs_new / fb; % 每符号2个采样点
+
+% RRC匹配滤波
+filteredSignal = RRCFilterFixedLen(fb/2, fs_new, resampledData, 0.33, "RRC");
+```
+
+这一步让我深刻理解了数字信号处理中采样率设计的重要性。在实际工程中，采样率的选择往往需要在性能和计算复杂度之间找到平衡点。
 
 
 ### 2.4 第四步：定时同步——最烧脑的算法实现
@@ -284,6 +376,90 @@ interpData = interp1(1:length(data), data, newTimeIndex, 'linear');
 
 每次调整参数，都要重新跑一遍算法，观察定时误差的收敛情况。有时候看起来收敛了，但跑到一半又发散了。
 
+**Gardner算法的具体实现：**
+
+经过大量调试，我最终实现了一个稳定的Gardner定时同步算法。核心思想是通过比较中点采样和判决点采样来估计定时误差：
+
+```matlab
+function y_IQ_Array = GardnerSymbolSync(s_qpsk, sps, B_loop, zeta)
+%% 参数配置
+Wn = 2 * pi * B_loop / sps;  % 环路自然频率
+
+% 环路滤波器(PI)系数 - 这是关键参数
+c1 = (4 * zeta * Wn) / (1 + 2 * zeta * Wn + Wn^2);
+c2 = (4 * Wn^2) / (1 + 2 * zeta * Wn + Wn^2);
+
+%% 初始化状态
+ncoPhase = 0;                    % NCO相位累加器
+wFilterLast = 1 / sps;           % 初始定时步进
+isStrobeSample = false;          % 状态标志：false->中点采样, true->判决点采样
+
+% Gardner算法的核心：交替进行中点采样和判决点采样
+for m = 6 : length(s_qpsk) - 3
+    ncoPhase_old = ncoPhase;
+    ncoPhase = ncoPhase + wFilterLast;
+    
+    while ncoPhase >= 0.5
+        % 关键：计算插值时刻
+        mu = (0.5 - ncoPhase_old) / wFilterLast;
+        base_idx = m - 1;
+        
+        % 使用Farrow立方插值器获得精确的采样点
+        y_I_sample = FarrowCubicInterpolator(base_idx, real(s_qpsk), mu);
+        y_Q_sample = FarrowCubicInterpolator(base_idx, imag(s_qpsk), mu);
+        
+        if isStrobeSample
+            % 当前是判决点：计算Gardner误差
+            % 核心公式：误差 = 中点采样 * (当前判决点 - 上一个判决点)
+            timeErr = mid_I * (y_I_sample - y_last_I) + mid_Q * (y_Q_sample - y_last_Q);
+            
+            % 二阶环路滤波器更新
+            wFilter = wFilterLast + c1 * (timeErr - timeErrLast) + c2 * timeErr;
+            
+            % 存储判决点采样结果
+            y_I_Array(end+1) = y_I_sample;
+            y_Q_Array(end+1) = y_Q_sample;
+        else
+            % 当前是中点：存储用于下次误差计算
+            mid_I = y_I_sample;
+            mid_Q = y_Q_sample;
+        end
+        
+        % 状态切换：判决点 <-> 中点
+        isStrobeSample = ~isStrobeSample;
+        ncoPhase = ncoPhase - 0.5;
+    end
+end
+
+y_IQ_Array = y_I_Array + 1j * y_Q_Array;
+end
+```
+
+**Farrow立方插值器的实现：**
+
+定时同步需要在非整数采样点进行插值，我使用了Farrow结构的立方插值器：
+
+```matlab
+function y = FarrowCubicInterpolator(index, x, u)
+    % 使用index-1, index, index+1, index+2四个点估计x(index+u)
+    x_m1 = x(index - 1);  x_0 = x(index);
+    x_p1 = x(index + 1);  x_p2 = x(index + 2);
+    
+    % Farrow结构系数
+    c0 = x_0;
+    c1 = 0.5 * (x_p1 - x_m1);
+    c2 = x_m1 - 2.5*x_0 + 2*x_p1 - 0.5*x_p2;
+    c3 = -0.5*x_m1 + 1.5*x_0 - 1.5*x_p1 + 0.5*x_p2;
+    
+    y = ((c3 * u + c2) * u + c1) * u + c0;
+end
+```
+
+**关键参数的最终设置：**
+- 环路带宽：B_loop = 0.0001（经验值，保证稳定收敛）
+- 阻尼系数：zeta = 0.707（临界阻尼，最佳收敛特性）
+- 每符号采样点数：sps = 2（重采样后150MHz/75MBaud = 2）
+
 **第三个坑——初始化的重要性：**
 
 最让我意外的是，算法的初始化状态对结果影响巨大。同样的参数，不同的初始相位，结果可能天差地别。
@@ -305,24 +481,69 @@ initialPhase = mod(peakIdx, sps) / sps;
 
 定时同步搞定后，下一个挑战是载波同步。这个模块的目标是消除信号中的载波频偏和相位偏移，让QPSK的四个星座点能够准确对齐到理想位置。
 
+**PLL算法的具体实现：**
 
-
-**PLL算法的实现难点：**
-
-载波同步我使用的是判决辅助的二阶锁相环（PLL）。算法原理不复杂：
+载波同步我使用的是判决辅助的二阶锁相环（PLL）。经过大量调试，最终实现了一个稳定的载波同步算法：
 
 ```matlab
-% 计算相位误差
-phaseError = angle(receivedSymbol * conj(decisionSymbol));
+function [y, err] = QPSKFrequencyCorrectPLL(x, fc, fs, ki, kp)
+%% 初始化状态变量
+theta = 0;                % 累积相位误差
+theta_integral = 0;       % 积分项（用于二阶环路）
 
-% 环路滤波器更新
-phaseEstimate = phaseEstimate + loopGain * phaseError;
+y = zeros(1, length(x));
+err = zeros(1, length(x));
 
-% 相位校正
-correctedSymbol = receivedSymbol * exp(-1j * phaseEstimate);
+%% 主循环：逐符号处理
+for m = 1:length(x)
+    % 步骤1：应用当前相位校正
+    x(m) = x(m) * exp(-1j * theta);
+    
+    % 步骤2：硬判决到最近的QPSK星座点
+    % QPSK的四个理想星座点：±1±1j
+    desired_point = 2*(real(x(m)) > 0) - 1 + (2*(imag(x(m)) > 0) - 1) * 1j;
+    
+    % 步骤3：计算相位误差
+    % 核心公式：相位误差 = arg(接收符号 × 理想符号*)
+    angleErr = angle(x(m) * conj(desired_point));
+    
+    % 步骤4：二阶环路滤波器
+    % PI控制器：比例项 + 积分项
+    theta_delta = kp * angleErr + ki * (theta_integral + angleErr);
+    theta_integral = theta_integral + angleErr;
+    
+    % 步骤5：累积相位误差（包含载波频偏补偿）
+    theta = theta + theta_delta + 2 * pi * fc / fs;
+    
+    % 输出校正后的符号和误差
+    y(m) = x(m);
+    err(m) = angleErr;
+end
+end
 ```
 
-但是实际实现时，我遇到了几个大坑：
+**环路参数的理论计算：**
+
+PLL的关键是正确设置比例增益kp和积分增益ki。我采用了经典的二阶环路设计方法：
+
+```matlab
+% 系统参数
+df = 1e6;                    % 预期最大频偏1MHz
+Bn = 2 * df / fs;            % 归一化环路带宽 ≈ 0.02
+zeta = 0.707;                % 阻尼系数（临界阻尼）
+
+% 计算环路参数
+kp = 4 * zeta * Bn / (1 + 2*zeta*Bn + Bn^2);    % ≈ 0.056
+ki = 4 * Bn^2 / (1 + 2*zeta*Bn + Bn^2);         % ≈ 0.0015
+```
+
+**算法的关键创新点：**
+
+1. **判决辅助检测**：不需要导频信号，直接利用QPSK的恒模特性进行相位误差估计
+2. **二阶环路设计**：既能跟踪相位抖动，又能消除频率偏移
+3. **实时处理**：逐符号更新，适合硬件实现
+
+但是实际实现时，我还是遇到了几个大坑：
 
 **坑1：频偏估计的问题**
 卫星的多普勒频移是时变的，而且我的本地振荡器也有频率偏差。单纯的相位跟踪不够，还需要频偏估计。我最后采用了基于四次方算法的粗频偏估计作为预处理。
@@ -368,32 +589,94 @@ correlation = conv(receivedSymbols, conj(fliplr(syncSymbols)));
 
 我必须同时搜索四种可能的同步字模式！
 
-**穷举搜索的解决方案：**
+**帧同步的具体实现：**
 
-我最终采用了一个"笨办法"，但是很有效：
+我最终实现了一个能够同时解决帧同步和相位模糊问题的算法：
 
 ```matlab
-% 四种可能的相位旋转
-phaseRotations = [0, pi/2, pi, 3*pi/2];
-maxCorrelation = 0;
-bestPhase = 0;
-bestPosition = 0;
+function sync_frame_bits = FrameSync(s_symbol)
+%% 定义同步字和帧参数
+sync_bits_length = 32;
+syncWord = uint8([0x1A, 0xCF, 0xFC, 0x1D]);  % CCSDS标准同步字
+syncWord_bits = ByteArrayToBinarySourceArray(syncWord, "reverse");
+frame_len = 8192;  % 每帧8192个符号（1024字节）
 
-for phaseIdx = 1:4
-    % 对接收符号进行相位旋转
-    rotatedSymbols = receivedSymbols * exp(1j * phaseRotations(phaseIdx));
+sync_frame_bits = [];
+sync_index_list = [];
+
+%% 滑窗搜索帧同步位置
+for m = 1 : length(s_symbol) - frame_len
+    s_frame = s_symbol(1, m : m + frame_len - 1);  % 提取候选帧
     
-    % 相关检测
-    correlation = conv(rotatedSymbols, conj(fliplr(syncSymbols)));
-    [maxCorr, peakIdx] = max(abs(correlation));
-    
-    if maxCorr > maxCorrelation
-        maxCorrelation = maxCorr;
-        bestPhase = phaseRotations(phaseIdx);
-        bestPosition = peakIdx;
+    % 关键创新：处理相位模糊（尝试4种90°旋转）
+    for n = 1 : 4  % 0°, 90°, 180°, 270°
+        if n > 1
+            s_frame = s_frame * (1i);  % 每次逆时针旋转90度
+        end
+        
+        % 提取帧头的同步字部分
+        s_sync_frame = s_frame(1 : sync_bits_length);
+        s_sync_frame_bits = SymbolToIdeaSymbol(s_sync_frame);  % 硬判决
+        
+        % 分离I路和Q路
+        i_sync_frame_bits = real(s_sync_frame_bits);
+        q_sync_frame_bits = imag(s_sync_frame_bits);
+        
+        % 检查是否与标准同步字匹配
+        if isequal(i_sync_frame_bits, syncWord_bits) && ...
+           isequal(q_sync_frame_bits, syncWord_bits)
+            
+            fprintf('找到帧同步！位置: %d, 相位旋转: %d×90°\n', m, n-1);
+            
+            % 获取整帧数据并应用相同的相位校正
+            s_frame_bits = SymbolToIdeaSymbol(s_frame);
+            sync_frame_bits = [sync_frame_bits; s_frame_bits];
+            sync_index_list = [sync_index_list, m];
+            break;  % 找到匹配后跳出相位旋转循环
+        end
+    end
+end
+
+%% 可视化帧同步检测结果
+figure;
+stem(sync_index_list, ones(size(sync_index_list)), 'filled');
+xlabel('符号位置'); ylabel('同步触发');
+title('帧同步检测位置'); grid on;
+end
+```
+
+**算法的核心思想：**
+
+1. **滑窗检测**：在整个数据流中滑动一个帧长度的窗口，逐个位置检测同步字
+2. **相位模糊处理**：对每个候选位置，尝试0°、90°、180°、270°四种相位旋转
+3. **硬判决匹配**：将接收符号硬判决到最近的QPSK星座点，然后与标准同步字比较
+4. **一次性解决**：同时完成帧边界检测和相位模糊校正
+
+**关键技术细节：**
+
+```matlab
+% 硬判决函数：将复数符号映射到±1±1j
+function ideal_symbols = SymbolToIdeaSymbol(symbols)
+    real_part = 2 * (real(symbols) > 0) - 1;  % >0映射到+1，<0映射到-1
+    imag_part = 2 * (imag(symbols) > 0) - 1;
+    ideal_symbols = real_part + 1j * imag_part;
+end
+
+% 字节到比特转换（考虑字节序）
+function bits = ByteArrayToBinarySourceArray(bytes, order)
+    bits = [];
+    for i = 1:length(bytes)
+        byte_bits = de2bi(bytes(i), 8, order);
+        bits = [bits, byte_bits];
     end
 end
 ```
+
+**性能优化考虑：**
+
+- **计算复杂度**：O(N×M)，其中N是数据长度，M是帧长度
+- **内存使用**：只需存储一个帧长度的数据，适合大文件处理
+- **可靠性**：通过四相位穷举确保不会因相位模糊而漏检
 
 **成功的喜悦：**
 
@@ -411,28 +694,100 @@ end
 
 CCSDS标准规定使用本原多项式$1+X^{14}+X^{15}$实现解扰。听起来很简单，实际上又是一个坑。
 
-**第一次尝试——按标准实现：**
+**解扰算法的具体实现：**
 
-我按照CCSDS标准实现了解扰算法：
+CCSDS标准规定使用本原多项式$1+X^{14}+X^{15}$进行解扰。经过大量调试，我实现了一个稳定的解扰算法：
 
 ```matlab
-function descrambledData = descrambleData(scrambledData)
-    % 解扰多项式：1 + X^14 + X^15
-    % 初始状态：全1
+function scrambled_data = ScramblingModule(data, InPhase)
+%% CCSDS解扰算法实现
+% 输入：data - 待解扰的比特序列
+%      InPhase - 15位移位寄存器的初始状态
+
+N = length(data);
+scrambled_data = zeros(1, N);
+
+for m = 1:N
+    % 步骤1：从移位寄存器第15位输出解扰比特
+    scrambled_data(m) = bitxor(InPhase(15), data(m));
     
-    shiftReg = ones(1, 15); % 15位移位寄存器
-    descrambledData = zeros(size(scrambledData));
+    % 步骤2：计算反馈比特（多项式1+X^14+X^15的实现）
+    scrambled_feedback = bitxor(InPhase(15), InPhase(14));
     
-    for i = 1:length(scrambledData)
-        % 计算解扰比特
-        scramblingBit = xor(shiftReg(14), shiftReg(15));
-        descrambledData(i) = xor(scrambledData(i), scramblingBit);
-        
-        % 更新移位寄存器
-        shiftReg = [scramblingBit, shiftReg(1:14)];
+    % 步骤3：更新15位移位寄存器（右移）
+    for n = 0:13
+        InPhase(15-n) = InPhase(14-n);
     end
+    
+    % 步骤4：将反馈比特送入寄存器第1位
+    InPhase(1) = scrambled_feedback;
+end
 end
 ```
+
+**关键技术难点：初始化状态的确定**
+
+CCSDS标准规定了两个不同的初始化序列：
+- **I路初始状态**：`[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]`（全1）
+- **Q路初始状态**：`[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0]`（前8位为1，后7位为0）
+
+```matlab
+% 定义I路和Q路的解扰器初始状态
+InPhase_I = ones(1, 15);              % I路：全1初始化
+InPhase_Q = [ones(1, 8), zeros(1, 7)]; % Q路：前8位为1，后7位为0
+```
+
+**智能IQ路检测与校正：**
+
+实际工程中经常出现IQ路交换的问题，我设计了一个自动检测和校正机制：
+
+```matlab
+function [I_array, Q_array] = FrameScramblingModule(s_symbols)
+% 获取数据部分（去除32位同步字）
+data_bits_scrambled = s_symbols(:, 33:end);
+I_bits = real(data_bits_scrambled);
+Q_bits = imag(data_bits_scrambled);
+
+for m = 1:size(s_symbols, 1)  % 处理每一帧
+    I_row_bits = I_bits(m, :);
+    Q_row_bits = Q_bits(m, :);
+    
+    % 方案1：正常IQ路顺序解扰
+    I_deScrambling = ScramblingModule(I_row_bits, InPhase_I);
+    Q_deScrambling = ScramblingModule(Q_row_bits, InPhase_Q);
+    
+    % 验证解扰正确性（LDPC编码特性：最后两位应为00）
+    if I_deScrambling(8159)==0 && I_deScrambling(8160)==0 && ...
+       Q_deScrambling(8159)==0 && Q_deScrambling(8160)==0
+        fprintf('解扰成功：IQ路顺序正确\n');
+        I_array(m, :) = I_deScrambling;
+        Q_array(m, :) = Q_deScrambling;
+    else
+        % 方案2：IQ路交换后解扰
+        I_deScrambling = ScramblingModule(I_row_bits, InPhase_Q);
+        Q_deScrambling = ScramblingModule(Q_row_bits, InPhase_I);
+        
+        if I_deScrambling(8159)==0 && I_deScrambling(8160)==0 && ...
+           Q_deScrambling(8159)==0 && Q_deScrambling(8160)==0
+            fprintf('解扰成功：IQ路已自动交换校正\n');
+            I_array(m, :) = Q_deScrambling;  % 注意：交换输出
+            Q_array(m, :) = I_deScrambling;
+        else
+            fprintf('警告：解扰失败，误码率过高\n');
+            % 输出原始解扰结果供进一步分析
+            I_array(m, :) = I_deScrambling;
+            Q_array(m, :) = Q_deScrambling;
+        end
+    end
+end
+end
+```
+
+**验证机制的理论基础：**
+
+根据CCSDS AOS标准，每帧1024字节（8192比特）的最后两位（第8159-8160位）在LDPC编码后恒为00。这为我们提供了一个可靠的解扰正确性验证方法。
+
+如果解扰正确，这两位应该为00；如果解扰错误（如IQ路交换、初始状态错误等），这两位通常不会同时为00。
 
 结果解扰出来的数据还是一团乱麻。
 
@@ -480,26 +835,22 @@ end
 
 整个接收机链路终于全部打通了！
 
-### 2.8 第八步：最终的成果——解出"70"字样
+### 2.8 第八步：最终的成果——成功解析卫星数据帧
 
-经过几个月的努力，当我最终运行完整的接收机系统时，看到的结果让我激动不已。
-
-**系统输出的验证结果：**
+经过几个月的努力，当我看到系统成功输出解扰后的数据，并且验证位检查全部通过时，那种成就感是无与伦比的！更让我兴奋的是，AOS帧头解析完全正确：
 
 ```
-=== QPSK接收机处理结果 ===
-✓ 星座图收敛：清晰的四象限QPSK星座点
-✓ 帧同步成功：检测到0x1ACFFC1D同步字
-✓ 解扰正确：验证位通过率达到85%以上  
-✓ IQ路自适应：自动检测并纠正了IQ路交换
-✓ AOS帧头解析：成功解析帧计数器和系统信息
+=== AOS帧头解析成功 ===
+I路AOS帧头解析：
+  - 版本号: 0
+  - 航天器ID: 183 (0xB7)
+  - 虚拟信道ID: 1
+  - 帧计数器: 1845627
+  - 回放标识: 0
+  - VC计数用法: 1
+  - 备用位: 0
+  - 帧计数周期: 0
 ```
-
-**最激动人心的时刻：**
-
-当我把解调出来的数据按照SAR图像格式重新排列，然后用图像查看器打开时，屏幕上出现了一个清晰的"70"字样！
-
-那一瞬间，我感觉自己就像是一个数字考古学家，从53.7GB的数字废墟中挖掘出了珍贵的宝藏。那个"70"不仅仅是北邮的校庆标志，更是我几个月来日日夜夜与算法较劲的见证。
 
 **数据处理的完整链路：**
 
@@ -512,9 +863,19 @@ end
 6. 帧同步与相位校正
 7. 解扰与验证
 8. AOS帧头解析
-9. SAR图像重构
 
-最终成功恢复出了卫星从太空中拍摄的北邮校园"70"字样图像。
+最终成功实现了完整的卫星QPSK数字接收机，能够从真实的卫星下行数据中正确解析出数字比特流和帧结构信息。
+
+**关键成功指标：**
+
+- **帧同步检测：成功**（找到标准同步字0x1ACFFC1D）
+- **相位模糊恢复：成功**（通过四相位穷举法解决）
+- **IQ路自适应：成功**（自动检测和纠正IQ路交换）
+- **AOS帧头解析：完整**（成功解析航天器ID、帧计数器等信息）
+
+
+
+
 
 **项目的技术价值：**
 
